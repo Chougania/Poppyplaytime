@@ -233,7 +233,7 @@ public class DbUnityMovment : NetworkBehaviour
 			}
 			UpdateAnimatorProperties(0f, IsCrouching.Value, sprint: false, walk: false);
 		}
-		else if (PoppyUIInputGate.IsBlocked)
+		else if (PoppyUIInputGate.IsGameplayBlocked)
 		{
 			UpdateAnimatorProperties(0f, IsCrouching.Value, sprint: false, walk: false);
 		}
