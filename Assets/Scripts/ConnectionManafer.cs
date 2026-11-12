@@ -385,14 +385,10 @@ public class ConnectionManafer : MonoBehaviour
 		{
 			Debug.LogError("[Netcode UI Assignment Missing] 'canvas1' is NOT assigned in the inspector component slots!");
 		}
+		// The new PoppyLobbyUI owns the waiting-room interface.
+		// Keep the legacy canvas disabled to avoid duplicate buttons intercepting clicks.
 		if (canvas2 != null)
-		{
-			canvas2.SetActive(value: true);
-		}
-		else
-		{
-			Debug.LogError("[Netcode UI Assignment Missing] 'canvas2' is NOT assigned in the inspector component slots!");
-		}
+			canvas2.SetActive(false);
 		if (testingCamera != null)
 		{
 			testingCamera.SetActive(value: false);
