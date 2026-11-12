@@ -98,7 +98,7 @@ public class GrabpackController : NetworkBehaviour
 
 	private void FixedUpdate()
 	{
-		if (IsOwner && !PoppyUIInputGate.IsBlocked)
+		if (IsOwner)
 		{
 			HandleGrabpackPhysics();
 			HandleReelInPhysics();
