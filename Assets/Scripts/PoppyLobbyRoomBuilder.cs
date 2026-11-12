@@ -138,7 +138,7 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
         palm.transform.SetParent(root, false);
         palm.transform.localPosition = position;
         palm.transform.localScale = new Vector3(0.8f, 0.9f, 0.42f);
-        palm.GetComponent<Renderer>().sharedMaterial = material;
+        if (palm.GetComponent<Renderer>() != null && material != null) palm.GetComponent<Renderer>().sharedMaterial = material;
 
         for (int i = 0; i < 4; i++)
         {
@@ -147,7 +147,7 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
             finger.transform.SetParent(root, false);
             finger.transform.localPosition = position + new Vector3(-0.27f + i * 0.18f, 0.52f, 0f);
             finger.transform.localScale = new Vector3(0.14f, 0.3f, 0.14f);
-            finger.GetComponent<Renderer>().sharedMaterial = material;
+            if (finger.GetComponent<Renderer>() != null && material != null) finger.GetComponent<Renderer>().sharedMaterial = material;
         }
 
         GameObject thumb = GameObject.CreatePrimitive(PrimitiveType.Capsule);
@@ -156,7 +156,7 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
         thumb.transform.localPosition = position + new Vector3(-0.48f, -0.05f, 0f);
         thumb.transform.localRotation = Quaternion.Euler(0f, 0f, -38f);
         thumb.transform.localScale = new Vector3(0.16f, 0.28f, 0.16f);
-        thumb.GetComponent<Renderer>().sharedMaterial = material;
+        if (thumb.GetComponent<Renderer>() != null && material != null) thumb.GetComponent<Renderer>().sharedMaterial = material;
 
         GameObject cable = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         cable.name = handName + " cable";
@@ -165,7 +165,7 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
         Vector3 cableEnd = position + new Vector3(0f, -1.15f, 0f);
         cable.transform.localPosition = (cableStart + cableEnd) * 0.5f;
         cable.transform.localScale = new Vector3(0.055f, 0.42f, 0.055f);
-        cable.GetComponent<Renderer>().sharedMaterial = darkMetal;
+        if (cable.GetComponent<Renderer>() != null && darkMetal != null) cable.GetComponent<Renderer>().sharedMaterial = darkMetal;
     }
 
     private void Block(string name, Vector3 localPosition, Vector3 scale, Material material)
@@ -176,7 +176,7 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
         obj.transform.localPosition = localPosition;
         obj.transform.localScale = scale;
         Renderer renderer = obj.GetComponent<Renderer>();
-        renderer.sharedMaterial = material;
+        if (renderer != null && material != null) renderer.sharedMaterial = material;
     }
 
     private void AddLight(string name, Vector3 localPosition, Color color, float range, float intensity)
@@ -195,6 +195,12 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
     {
         Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null) shader = Shader.Find("Standard");
+        if (shader == null) shader = Shader.Find("Hidden/InternalErrorShader");
+        if (shader == null)
+        {
+            Debug.LogError("PoppyLobbyRoomBuilder: no compatible shader is available.");
+            return null;
+        }
         Material material = new Material(shader);
         material.name = name;
         material.color = color;
