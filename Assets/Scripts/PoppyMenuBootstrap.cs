@@ -57,9 +57,12 @@ public static class PoppyMenuBootstrap
 
             // A menu preview is a visual-only clone. Disable all gameplay scripts and
             // non-visual behaviours so it cannot move, shoot the GrabPack or join Netcode.
-            MonoBehaviour[] scripts = previewObject.GetComponentsInChildren<MonoBehaviour>(true);
-            for (int i = 0; i < scripts.Length; i++)
-                scripts[i].enabled = false;
+            Behaviour[] previewBehaviours = previewObject.GetComponentsInChildren<Behaviour>(true);
+            for (int i = 0; i < previewBehaviours.Length; i++)
+            {
+                if (!(previewBehaviours[i] is Animator))
+                    previewBehaviours[i].enabled = false;
+            }
 
             NetworkObject networkObject = previewObject.GetComponent<NetworkObject>();
             if (networkObject != null && networkObject.IsSpawned)
