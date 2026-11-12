@@ -81,6 +81,32 @@ public class GameManager : NetworkBehaviour
 		StartCoroutine(StartGameLoop());
 	}
 
+	public void RequestReturnToLobby()
+	{
+		if (!IsSpawned)
+			return;
+
+		if (IsServer)
+		{
+			if (_gameStarted)
+				EndGame();
+		}
+		else
+		{
+			RequestReturnToLobbyServerRpc();
+		}
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	private void RequestReturnToLobbyServerRpc(ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		if (!IsServer || !_gameStarted || NetworkManager.Singleton == null)
+			return;
+
+		// Returning to the waiting room ends the current shared round for everyone.
+		EndGame();
+	}
+
 	public void SetLocalReady(bool ready)
 	{
 		if (IsSpawned)
