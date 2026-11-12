@@ -202,7 +202,8 @@ public class GameManager : NetworkBehaviour
 			{
 				hostStartPromptUI.SetActive(value: true);
 			}
-			if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+			if (!PoppyUIInputGate.IsGameplayBlocked &&
+				(Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
 			{
 				if (hostStartPromptUI != null)
 				{
