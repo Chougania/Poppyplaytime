@@ -232,10 +232,18 @@ public class HuggyHunterAI : NetworkBehaviour
             return;
         }
 
-        lastKnownPosition = target.transform.position;
         agent.isStopped = false;
-        agent.speed = chaseSpeed;
-        agent.SetDestination(lastKnownPosition);
+        if (lostSightTimer <= 0f)
+        {
+            lastKnownPosition = target.transform.position;
+            agent.speed = chaseSpeed;
+            agent.SetDestination(lastKnownPosition);
+        }
+        else
+        {
+            agent.speed = searchSpeed;
+            agent.SetDestination(lastKnownPosition);
+        }
 
         if (Vector3.Distance(transform.position, target.transform.position) <= attackDistance &&
             Time.time >= nextAttackTime && !attackInProgress)
