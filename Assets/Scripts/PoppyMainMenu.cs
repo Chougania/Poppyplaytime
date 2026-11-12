@@ -258,10 +258,9 @@ public class PoppyMainMenu : MonoBehaviour
 
         if (connectionManager != null)
         {
-            if (connectionManager.codeInputField == null)
-                connectionManager.codeInputField = joinCodeInput;
-            if (connectionManager.nameInputField == null)
-                connectionManager.nameInputField = playerNameInput;
+            // Replace references to the old lobby UI with the newly generated controls.
+            connectionManager.codeInputField = joinCodeInput;
+            connectionManager.nameInputField = playerNameInput;
         }
 
         BuildShopPanel();
