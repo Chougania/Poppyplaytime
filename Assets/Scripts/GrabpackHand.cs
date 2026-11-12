@@ -39,6 +39,7 @@ public class GrabpackHand : NetworkBehaviour
     private Vector3 originalLocalPosition;
     private Quaternion originalLocalRotation;
     private Vector3 originalLocalScale = Vector3.one;
+    private Vector3 originalWorldScale = Vector3.one;
 
     public HandState CurrentState => currentState;
 
@@ -61,6 +62,9 @@ public class GrabpackHand : NetworkBehaviour
             originalLocalPosition = handObject.transform.localPosition;
             originalLocalRotation = handObject.transform.localRotation;
             originalLocalScale = handObject.transform.localScale;
+            originalWorldScale = originalParent != null
+                ? Vector3.Scale(originalParent.lossyScale, originalLocalScale)
+                : originalLocalScale;
         }
 
         if (handSpawnPoint != null && handObject != null)
@@ -133,6 +137,7 @@ public class GrabpackHand : NetworkBehaviour
             : handSpawnPoint.rotation;
 
         handObject.transform.SetParent(null, true);
+        handObject.transform.localScale = originalWorldScale;
         handObject.transform.position = currentHandPosition;
         handObject.transform.rotation = shootRotation;
 
@@ -154,7 +159,10 @@ public class GrabpackHand : NetworkBehaviour
         }
 
         if (handObject != null)
+        {
             handObject.transform.SetParent(null, true);
+            handObject.transform.localScale = originalWorldScale;
+        }
     }
 
     private void UpdateHandMovement()
