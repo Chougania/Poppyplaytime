@@ -89,7 +89,12 @@ public class GameManager : NetworkBehaviour
 		if (!IsServer || _gameStarted || NetworkManager.Singleton == null)
 			return;
 
-		if (NetworkManager.Singleton.ConnectedClientsList.Count >= 2)
+		int connectedCount = NetworkManager.Singleton.ConnectedClientsList.Count;
+		bool aiSoloReady = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 &&
+			aiMonsterPrefab != null && monsterSpawnPoint != null;
+		bool canStartMatch = connectedCount >= 2 || (connectedCount >= 1 && aiSoloReady);
+
+		if (canStartMatch)
 		{
 			if (hostStartPromptUI != null && !hostStartPromptUI.activeSelf)
 			{
