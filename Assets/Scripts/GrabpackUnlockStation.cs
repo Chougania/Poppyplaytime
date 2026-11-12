@@ -23,7 +23,7 @@ public class GrabpackUnlockStation : MonoBehaviour
     private void OnTriggerEnter(Collider other)
     {
         NetworkObject playerObject = other.GetComponentInParent<NetworkObject>();
-        if (playerObject == null || !playerObject.IsSpawned || !playerObject.IsServer)
+        if (playerObject == null || !playerObject.IsSpawned || !NetworkManager.Singleton.IsServer)
             return;
 
         if (oneUse && consumed)
