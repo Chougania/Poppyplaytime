@@ -147,6 +147,7 @@ public class GameManager : NetworkBehaviour
 			yield break;
 
 		_gameStarted = true;
+		ResetRoundProgression();
 		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		SetRoleNotificationClientRpc("Assigning Roles...");
 		yield return new WaitForSecondsRealtime(3f);
@@ -369,6 +370,7 @@ public class GameManager : NetworkBehaviour
 			return;
 
 		_gameStarted = false;
+		ResetRoundProgression();
 		GrantMatchCreditsClientRpc(100);
 		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
 			spawnedAiMonster.Despawn(true);
