@@ -62,6 +62,19 @@ public class PoppyMainMenu : MonoBehaviour
             connectionManager.networkManager.IsListening && menuCanvas != null && menuCanvas.gameObject.activeSelf)
         {
             menuCanvas.gameObject.SetActive(false);
+            if (corridorRoot != null)
+                corridorRoot.gameObject.SetActive(false);
+            if (characterPreview != null && characterPreview.name == "PoppyMenu_PlayerPreview")
+                characterPreview.gameObject.SetActive(false);
+            if (huggyPreview != null)
+                huggyPreview.gameObject.SetActive(false);
+            if (menuCamera != null)
+            {
+                menuCamera.enabled = false;
+                AudioListener listener = menuCamera.GetComponent<AudioListener>();
+                if (listener != null)
+                    listener.enabled = false;
+            }
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
