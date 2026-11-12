@@ -470,6 +470,12 @@ public class GameManager : NetworkBehaviour
 		PoppyShop.AddCredits(amount);
 	}
 
+	[ClientRpc]
+	private void GrantMatchTicketsClientRpc(int amount)
+	{
+		PoppyShop.AddTickets(amount);
+	}
+
 	private void ResetRoundProgression()
 	{
 		if (!IsServer || NetworkManager.Singleton == null)
@@ -505,6 +511,7 @@ public class GameManager : NetworkBehaviour
 		_readyClients.Clear();
 		ResetRoundProgression();
 		GrantMatchCreditsClientRpc(100);
+		GrantMatchTicketsClientRpc(1);
 		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
 			spawnedAiMonster.Despawn(true);
 		spawnedAiMonster = null;
