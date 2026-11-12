@@ -14,6 +14,7 @@ public class GrabpackPuzzleInteractable : NetworkBehaviour
     [Header("Feedback")]
     public GameObject activatedVisual;
     public UnityEvent onActivated;
+    public UnityEvent onReset;
 
     private readonly NetworkVariable<bool> isActivated = new NetworkVariable<bool>(
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
@@ -53,6 +54,15 @@ public class GrabpackPuzzleInteractable : NetworkBehaviour
 
         isActivated.Value = true;
         onActivated?.Invoke();
+    }
+
+    public void ResetForNewMatch()
+    {
+        if (!IsServer)
+            return;
+
+        isActivated.Value = false;
+        onReset?.Invoke();
     }
 
     private void OnActivationChanged(bool previous, bool current)
