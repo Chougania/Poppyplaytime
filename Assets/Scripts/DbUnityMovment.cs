@@ -508,6 +508,28 @@ public class DbUnityMovment : NetworkBehaviour
 		_isLocalVictimFrozen = false;
 	}
 
+	public void SetEliminatedState(bool eliminated, bool enableGrabpack)
+	{
+		if (!IsOwner)
+			return;
+
+		_isLocalVictimFrozen = eliminated;
+		if (_controller != null)
+			_controller.enabled = !eliminated;
+
+		SetGrabpackStatus(!eliminated && enableGrabpack);
+		if (eliminated)
+		{
+			Cursor.lockState = CursorLockMode.None;
+			Cursor.visible = true;
+		}
+		else
+		{
+			Cursor.lockState = CursorLockMode.Locked;
+			Cursor.visible = false;
+		}
+	}
+
 	public void SetGrabpackStatus(bool enableGrabpack)
 	{
 		if (grabpackScript != null)
