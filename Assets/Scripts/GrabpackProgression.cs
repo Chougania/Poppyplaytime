@@ -14,7 +14,6 @@ public enum GrabpackAbility
 [DisallowMultipleComponent]
 public class GrabpackProgression : NetworkBehaviour
 {
-    private const string SaveKey = "Poppy.Grabpack.UnlockedMask";
     private const int StartingMask = (1 << (int)GrabpackAbility.Blue) | (1 << (int)GrabpackAbility.Red);
 
     [Header("Optional hand models - assign in the player prefab")]
@@ -38,15 +37,6 @@ public class GrabpackProgression : NetworkBehaviour
     {
         unlockedMask.OnValueChanged += OnUnlockedMaskChanged;
         ApplyHandVisuals();
-
-        if (IsOwner)
-        {
-            int savedMask = PlayerPrefs.GetInt(SaveKey, StartingMask) | StartingMask;
-            if (IsServer)
-                unlockedMask.Value = savedMask;
-            else
-                RestoreProgressServerRpc(savedMask);
-        }
     }
 
     public override void OnNetworkDespawn()
@@ -96,21 +86,16 @@ public class GrabpackProgression : NetworkBehaviour
         return true;
     }
 
-    [ServerRpc]
-    private void RestoreProgressServerRpc(int savedMask)
+    // Called by the server at the beginning and end of every round.
+    public void ResetForNewMatch()
     {
-        unlockedMask.Value |= (savedMask | StartingMask);
+        if (IsServer)
+            unlockedMask.Value = StartingMask;
     }
 
     private void OnUnlockedMaskChanged(int previous, int current)
     {
         ApplyHandVisuals();
-
-        if (IsOwner)
-        {
-            PlayerPrefs.SetInt(SaveKey, current);
-            PlayerPrefs.Save();
-        }
     }
 
     private void ApplyHandVisuals()
