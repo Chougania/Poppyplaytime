@@ -7,6 +7,7 @@ using UnityEngine;
 public static class PoppyShop
 {
     private const string CreditsKey = "Poppy.Shop.Credits";
+    private const string TicketsKey = "Poppy.Shop.Tickets";
     private const string SelectedKey = "Poppy.Shop.SelectedColor";
     private const string UnlockedPrefix = "Poppy.Shop.Color.";
 
@@ -40,6 +41,31 @@ public static class PoppyShop
                 PlayerPrefs.SetInt(CreditsKey, 350);
             return PlayerPrefs.GetInt(CreditsKey, 350);
         }
+    }
+
+    public static int Tickets
+    {
+        get
+        {
+            if (!PlayerPrefs.HasKey(TicketsKey))
+                PlayerPrefs.SetInt(TicketsKey, 0);
+            return PlayerPrefs.GetInt(TicketsKey, 0);
+        }
+    }
+
+    public static void AddTickets(int amount)
+    {
+        if (amount <= 0) return;
+        PlayerPrefs.SetInt(TicketsKey, Tickets + amount);
+        PlayerPrefs.Save();
+    }
+
+    public static bool SpendTickets(int amount)
+    {
+        if (amount <= 0 || Tickets < amount) return false;
+        PlayerPrefs.SetInt(TicketsKey, Tickets - amount);
+        PlayerPrefs.Save();
+        return true;
     }
 
     public static string GetColorName(int index) => Names[Mathf.Clamp(index, 0, Names.Length - 1)];
