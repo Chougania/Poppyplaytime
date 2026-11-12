@@ -38,6 +38,7 @@ public class GameManager : NetworkBehaviour
 	private NetworkVariable<int> _netTimer = new NetworkVariable<int>(180, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 	private NetworkVariable<bool> _netGameStarted = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 	private NetworkList<ulong> _readyClients = new NetworkList<ulong>();
+	private readonly HashSet<ulong> _eliminatedClients = new HashSet<ulong>();
 
 	private bool _gameStarted;
 
@@ -153,8 +154,19 @@ public class GameManager : NetworkBehaviour
 
 	private void Update()
 	{
-		if (!IsServer || _gameStarted || NetworkManager.Singleton == null)
+		if (!IsServer || NetworkManager.Singleton == null)
 			return;
+
+		if (_gameStarted)
+		{
+			if (PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 &&
+				NetworkManager.Singleton.ConnectedClientsList.Count > 0 &&
+				_eliminatedClients.Count >= NetworkManager.Singleton.ConnectedClientsList.Count)
+			{
+				EndGame();
+			}
+			return;
+		}
 
 		bool canStartMatch = CanStartMatch;
 
@@ -218,6 +230,7 @@ public class GameManager : NetworkBehaviour
 
 		_gameStarted = true;
 		_netGameStarted.Value = true;
+		_eliminatedClients.Clear();
 		ResetRoundProgression();
 		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		SetRoleNotificationClientRpc("Assigning Roles...");
@@ -309,6 +322,14 @@ public class GameManager : NetworkBehaviour
 
 	public void ExecuteTargetedTeleport(ulong clientId, Vector3 targetPosition, bool isMonster, bool isSurvivor)
 	{
+		if (IsServer)
+		{
+			if (!isSurvivor && !isMonster)
+				_eliminatedClients.Add(clientId);
+			else if (isSurvivor)
+				_eliminatedClients.Remove(clientId);
+		}
+
 		if (IsServer && NetworkManager.Singleton != null &&
 			NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var value) &&
 			value.PlayerObject != null)
@@ -454,6 +475,7 @@ public class GameManager : NetworkBehaviour
 
 		_gameStarted = false;
 		_netGameStarted.Value = false;
+		_eliminatedClients.Clear();
 		_readyClients.Clear();
 		ResetRoundProgression();
 		GrantMatchCreditsClientRpc(100);
