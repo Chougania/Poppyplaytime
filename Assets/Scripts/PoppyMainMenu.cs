@@ -41,6 +41,14 @@ public class PoppyMainMenu : MonoBehaviour
         if (connectionManager == null)
             connectionManager = FindObjectOfType<ConnectionManafer>();
 
+        if (connectionManager != null)
+        {
+            if (connectionManager.canvas1 != null)
+                connectionManager.canvas1.SetActive(false);
+            if (connectionManager.canvas2 != null)
+                connectionManager.canvas2.SetActive(false);
+        }
+
         if (buildCorridorAtRuntime)
             BuildCreepyCorridor();
 
@@ -144,19 +152,19 @@ public class PoppyMainMenu : MonoBehaviour
     private IEnumerator Flicker(Light light, int seed)
     {
         float baseIntensity = light.intensity;
-        Random.InitState(seed * 7919 + 41);
+        System.Random random = new System.Random(seed * 7919 + 41);
         while (light != null)
         {
-            yield return new WaitForSecondsRealtime(Random.Range(1.8f, 5.5f));
-            int flickers = Random.Range(2, 6);
+            yield return new WaitForSecondsRealtime(1.8f + (float)random.NextDouble() * 3.7f);
+            int flickers = random.Next(2, 6);
             for (int i = 0; i < flickers && light != null; i++)
             {
                 light.enabled = false;
-                yield return new WaitForSecondsRealtime(Random.Range(0.035f, 0.12f));
+                yield return new WaitForSecondsRealtime(0.035f + (float)random.NextDouble() * 0.085f);
                 if (light == null) yield break;
                 light.enabled = true;
                 light.intensity = baseIntensity * Random.Range(0.55f, 1.25f);
-                yield return new WaitForSecondsRealtime(Random.Range(0.04f, 0.16f));
+                yield return new WaitForSecondsRealtime(0.04f + (float)random.NextDouble() * 0.12f);
             }
             if (light != null)
                 light.intensity = baseIntensity;
