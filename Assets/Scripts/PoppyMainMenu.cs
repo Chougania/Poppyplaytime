@@ -441,7 +441,13 @@ public class PoppyMainMenu : MonoBehaviour
         PlayerPrefs.Save();
         if (modeLabel != null)
             modeLabel.text = GetModeLabel();
-        HostSession();
+        if (connectionManager == null)
+        {
+            Debug.LogError("PoppyMainMenu: ConnectionManafer is missing.", this);
+            return;
+        }
+        ConnectionManafer.PlayerName = playerNameInput != null ? playerNameInput.text.Trim() : "Player";
+        connectionManager.HostSoloOffline();
     }
 
     private void HostSession()
