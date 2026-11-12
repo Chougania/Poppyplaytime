@@ -269,7 +269,7 @@ public class DbUnityMovment : NetworkBehaviour
 		NetRotation.Value = transform.rotation;
 	}
 
-\tprivate void HandleMovement()
+	private void HandleMovement()
 	{
 		float axis = Input.GetAxis("Horizontal");
 		float axis2 = Input.GetAxis("Vertical");
