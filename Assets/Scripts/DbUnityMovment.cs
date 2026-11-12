@@ -253,38 +253,50 @@ public class DbUnityMovment : NetworkBehaviour
 		NetRotation.Value = transform.rotation;
 	}
 
-	private void HandleMovement()
+\tprivate void HandleMovement()
 	{
 		float axis = Input.GetAxis("Horizontal");
 		float axis2 = Input.GetAxis("Vertical");
-		bool key = Input.GetKey(KeyCode.LeftShift);
-		bool key2 = Input.GetKey(KeyCode.LeftControl);
-		float magnitude = new Vector2(axis, axis2).magnitude;
-		float num = walkSpeed;
-		if (!(monsterModelContainer != null) || !monsterModelContainer.activeSelf)
+		bool wantsSprint = Input.GetKey(KeyCode.LeftShift) && axis2 > 0.1f;
+		bool crouching = Input.GetKey(KeyCode.LeftControl);
+		bool isMonster = monsterModelContainer != null && monsterModelContainer.activeSelf;
+		float inputMagnitude = new Vector2(axis, axis2).magnitude;
+
+		if (!isMonster)
 		{
-			if (key2)
+			if (wantsSprint && !crouching && _stamina > maxStamina * exhaustedThreshold)
 			{
-				num = crouchSpeed;
+				_stamina = Mathf.Max(0f, _stamina - staminaDrainPerSecond * Time.deltaTime);
+				_lastSprintTime = Time.time;
+				if (_stamina <= maxStamina * exhaustedThreshold)
+					_wasExhausted = true;
 			}
-			else
+			else if (Time.time >= _lastSprintTime + staminaRecoveryDelay)
 			{
-				num = ((key && axis2 > 0.1f) ? sprintSpeed : walkSpeed);
+				float recovery = crouching ? staminaRecoveryPerSecond * 1.35f : staminaRecoveryPerSecond;
+				_stamina = Mathf.Min(maxStamina, _stamina + recovery * Time.deltaTime);
+				if (_stamina > maxStamina * 0.25f)
+					_wasExhausted = false;
 			}
 		}
 		else
 		{
-			num = monsterSpeed;
+			_stamina = maxStamina;
+			_wasExhausted = false;
 		}
-		Vector3 vector = transform.right * axis + transform.forward * axis2;
-		if (vector.magnitude > 1f)
-		{
-			vector.Normalize();
-		}
+
+		bool sprinting = !isMonster && wantsSprint && !crouching &&
+			_stamina > maxStamina * exhaustedThreshold && !_wasExhausted;
+		float speed = isMonster ? monsterSpeed : (crouching ? crouchSpeed : (sprinting ? sprintSpeed : walkSpeed));
+
+		Vector3 direction = transform.right * axis + transform.forward * axis2;
+		if (direction.magnitude > 1f)
+			direction.Normalize();
+
 		if (_controller.enabled && _controller.isGrounded)
 		{
 			_verticalVelocity = -2f;
-			if (Input.GetButtonDown("Jump") && (monsterModelContainer == null || !monsterModelContainer.activeSelf))
+			if (Input.GetButtonDown("Jump") && !isMonster)
 			{
 				_verticalVelocity = Mathf.Sqrt(jumpHeight * 2f * gravity);
 				JumpServerRpc();
@@ -294,19 +306,19 @@ public class DbUnityMovment : NetworkBehaviour
 		{
 			_verticalVelocity -= gravity * Time.deltaTime;
 		}
-		Vector3 vector2 = vector * num;
-		vector2.y = _verticalVelocity;
+
+		Vector3 velocity = direction * speed;
+		velocity.y = _verticalVelocity;
 		if (_controller.enabled)
-		{
-			_controller.Move(vector2 * Time.deltaTime);
-		}
-		float num2 = ((magnitude > 0.05f) ? num : 0f);
+			_controller.Move(velocity * Time.deltaTime);
+
+		float animationSpeed = inputMagnitude > 0.05f ? speed : 0f;
 		NetPosition.Value = transform.position;
-		NetMoveSpeed.Value = num2;
-		IsCrouching.Value = key2;
-		IsSprinting.Value = ((num2 > walkSpeed) & key) && !key2 && (monsterModelContainer == null || !monsterModelContainer.activeSelf);
-		IsWalking.Value = num2 > 0.1f && !key && !key2;
-		UpdateAnimatorProperties(num2, key2, IsSprinting.Value, IsWalking.Value);
+		NetMoveSpeed.Value = animationSpeed;
+		IsCrouching.Value = crouching;
+		IsSprinting.Value = sprinting && animationSpeed > walkSpeed;
+		IsWalking.Value = animationSpeed > 0.1f && !sprinting && !crouching;
+		UpdateAnimatorProperties(animationSpeed, crouching, IsSprinting.Value, IsWalking.Value);
 	}
 
 	private void UpdateAnimatorProperties(float speed, bool crouch, bool sprint, bool walk)
