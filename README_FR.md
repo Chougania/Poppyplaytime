@@ -145,3 +145,45 @@ Aucune sauvegarde de manche ou de monde n'est ajoutée. Seuls les crédits, acha
 ### Validation
 
 Les changements ont été relus statiquement et poussés dans cette branche Git. La compilation Unity, le Play Mode, le bake NavMesh, le lancement offline et les tests Host/Client doivent encore être exécutés dans l'éditeur Unity ; aucun résultat de compilation ou test d'exécution n'est revendiqué ici.
+
+
+## Refonte UI, pause, monnaies et nouvelle salle d'attente
+
+Branche : `upgrade/full-ui-lobby-rework`
+
+### Contrôles et interfaces
+- `PoppyUIInputGate` centralise l'état des interfaces (menu, lobby, pause, boutique) et vérifie aussi le verrouillage du curseur et le pointeur au-dessus d'une UI.
+- `GrabpackController` ignore les clics souris quand une UI possède le curseur et rétracte proprement les mains déjà sorties.
+- `DbUnityMovment` suspend rotation et déplacement tant qu'une interface est ouverte ou que le curseur n'est pas capturé.
+- `PoppyPauseMenu` ajoute un menu Échap avec Continuer, Retour au lobby et Quitter. Le jeu réseau n'est pas mis en pause globalement : les autres joueurs continuent leur manche.
+- Le retour au lobby termine la manche partagée côté serveur, téléporte les joueurs au point de rassemblement, réinitialise les systèmes de manche et accorde les récompenses.
+
+### Menu principal
+- Crédit « CREATED BY CHOUGAN2 » en haut.
+- Solde Credits et Tickets visible.
+- Menu de jeu, hébergement/connexion, mode IA, difficulté et boutique dans une interface sombre modernisée.
+- La caméra du menu cadre le couloir industriel et les aperçus de personnages ; éclairages fluorescents vacillants.
+
+### Nouvelle salle d'attente
+- `PoppyLobbyRoomBuilder` crée automatiquement une scène additive runtime nommée `PlaytimeWaitingRoom`.
+- Salle industrielle avec plateforme d'attente, bancs, générateur, armoire à fusibles, indicateurs de courant, prises de batteries, conduits, éclairages bleus/rouges et effets de scintillement.
+- Caméra fixe dédiée pendant l'attente ; caméra du joueur et AudioListener réactivés pendant la manche.
+- La salle est construite avec des primitives Unity et des matériaux générés par code : aucun pack d'assets externe requis.
+- Le système GrabPack et les mains déjà présentes dans le prefab joueur sont conservés ; le verrouillage d'input empêche leur tir pendant les clics UI.
+
+### Monnaies
+- Credits : monnaie courante persistante.
+- Tickets : monnaie rare persistante, initialisée à 0.
+- Une manche terminée normalement accorde 100 Credits et 1 Ticket.
+- Un retour manuel au lobby termine la manche partagée sans accorder de récompense (anti-farm).
+- Les skins de monstre « SHADOW HUGGY » et « MOLTEN PROTOTYPE » coûtent respectivement 1 et 2 Tickets ; les autres articles utilisent les Credits.
+- Ces soldes restent stockés localement via PlayerPrefs dans ce prototype.
+
+### Validation et configuration
+- La salle et ses caméras sont ajoutées automatiquement quand la scène existante `Lobby` est chargée.
+- Garder `GameManager.lobbySpawnPoint` assigné : il sert de centre de la nouvelle salle et de point de retour.
+- Garder `NetworkManager`, `UnityTransport`, `ConnectionManafer` et `GameManager` dans la scène Lobby.
+- Les mains existantes restent assignées dans le prefab joueur.
+- Vérifier que la scène `Lobby` est dans Build Settings.
+
+Les scripts ont été vérifiés statiquement (structure des accolades et cohérence des appels ajoutés). La compilation Unity, les tests de clics UI en Play Mode, la scène additive en build, le multijoueur Relay et les tests de caméra doivent encore être exécutés dans Unity 2022.3.62f3.

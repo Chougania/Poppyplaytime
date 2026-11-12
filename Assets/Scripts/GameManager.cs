@@ -41,6 +41,7 @@ public class GameManager : NetworkBehaviour
 	private readonly HashSet<ulong> _eliminatedClients = new HashSet<ulong>();
 
 	private bool _gameStarted;
+	private int _roundId;
 
 	public bool IsGameStarted => _netGameStarted.Value;
 	public bool IsClientReady(ulong clientId) => _readyClients.Contains(clientId);
@@ -79,6 +80,32 @@ public class GameManager : NetworkBehaviour
 		if (hostStartPromptUI != null)
 			hostStartPromptUI.SetActive(false);
 		StartCoroutine(StartGameLoop());
+	}
+
+	public void RequestReturnToLobby()
+	{
+		if (!IsSpawned)
+			return;
+
+		if (IsServer)
+		{
+			if (_gameStarted)
+				EndGame(grantRewards: false);
+		}
+		else
+		{
+			RequestReturnToLobbyServerRpc();
+		}
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	private void RequestReturnToLobbyServerRpc(ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		if (!IsServer || !_gameStarted || NetworkManager.Singleton == null)
+			return;
+
+		// Returning to the waiting room ends the current shared round for everyone.
+		EndGame(grantRewards: false);
 	}
 
 	public void SetLocalReady(bool ready)
@@ -176,7 +203,8 @@ public class GameManager : NetworkBehaviour
 			{
 				hostStartPromptUI.SetActive(value: true);
 			}
-			if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+			if (!PoppyUIInputGate.IsGameplayBlocked &&
+				(Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
 			{
 				if (hostStartPromptUI != null)
 				{
@@ -228,6 +256,8 @@ public class GameManager : NetworkBehaviour
 		if (!IsServer || _gameStarted || NetworkManager.Singleton == null)
 			yield break;
 
+		_roundId++;
+		int currentRoundId = _roundId;
 		_gameStarted = true;
 		_netGameStarted.Value = true;
 		_eliminatedClients.Clear();
@@ -235,14 +265,22 @@ public class GameManager : NetworkBehaviour
 		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		SetRoleNotificationClientRpc("Assigning Roles...");
 		yield return new WaitForSecondsRealtime(3f);
-		AssignRolesAndSpawn();
+		if (!IsServer || currentRoundId != _roundId || !_gameStarted)
+			yield break;
 
-		while (IsServer && _netTimer.Value > 0)
+		AssignRolesAndSpawn();
+		if (!_gameStarted || currentRoundId != _roundId)
+			yield break;
+
+		while (IsServer && currentRoundId == _roundId && _gameStarted && _netTimer.Value > 0)
 		{
 			yield return new WaitForSecondsRealtime(1f);
+			if (currentRoundId != _roundId || !_gameStarted)
+				yield break;
 			_netTimer.Value = Mathf.Max(0, _netTimer.Value - 1);
 		}
-		EndGame();
+		if (currentRoundId == _roundId && _gameStarted)
+			EndGame();
 	}
 
 	private void AssignRolesAndSpawn()
@@ -444,6 +482,12 @@ public class GameManager : NetworkBehaviour
 		PoppyShop.AddCredits(amount);
 	}
 
+	[ClientRpc]
+	private void GrantMatchTicketsClientRpc(int amount)
+	{
+		PoppyShop.AddTickets(amount);
+	}
+
 	private void ResetRoundProgression()
 	{
 		if (!IsServer || NetworkManager.Singleton == null)
@@ -468,17 +512,22 @@ public class GameManager : NetworkBehaviour
 			puzzles[i].ResetForNewMatch();
 	}
 
-	private void EndGame()
+	private void EndGame(bool grantRewards = true)
 	{
 		if (!IsServer || NetworkManager.Singleton == null)
 			return;
 
+		_roundId++;
 		_gameStarted = false;
 		_netGameStarted.Value = false;
 		_eliminatedClients.Clear();
 		_readyClients.Clear();
 		ResetRoundProgression();
-		GrantMatchCreditsClientRpc(100);
+		if (grantRewards)
+		{
+			GrantMatchCreditsClientRpc(100);
+			GrantMatchTicketsClientRpc(1);
+		}
 		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
 			spawnedAiMonster.Despawn(true);
 		spawnedAiMonster = null;

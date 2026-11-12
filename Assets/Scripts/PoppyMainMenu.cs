@@ -27,10 +27,12 @@ public class PoppyMainMenu : MonoBehaviour
     private TMP_InputField playerNameInput;
     private TextMeshProUGUI modeLabel;
     private TextMeshProUGUI difficultyLabel;
+    private TextMeshProUGUI walletLabel;
     private GameObject shopPanel;
     private TextMeshProUGUI shopCreditsLabel;
     private TextMeshProUGUI shopStatusLabel;
     private bool isShopOpen;
+    private bool wasConnectedToSession;
     private Transform corridorRoot;
     private Material wallMaterial;
     private Material floorMaterial;
@@ -54,31 +56,61 @@ public class PoppyMainMenu : MonoBehaviour
             BuildCreepyCorridor();
 
         BuildInterface();
+        PoppyUIInputGate.Clear();
+        PoppyUIInputGate.SetMenuOpen(true);
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
         ApplyPreviewSkin();
     }
 
     private void Update()
     {
-        if (connectionManager != null && connectionManager.networkManager != null &&
-            connectionManager.networkManager.IsListening && menuCanvas != null && menuCanvas.gameObject.activeSelf)
+        bool connected = connectionManager != null && connectionManager.networkManager != null &&
+            connectionManager.networkManager.IsListening;
+
+        if (connected)
         {
-            menuCanvas.gameObject.SetActive(false);
-            if (corridorRoot != null)
-                corridorRoot.gameObject.SetActive(false);
+            wasConnectedToSession = true;
+            isShopOpen = false;
+            PoppyUIInputGate.SetShopOpen(false);
+            if (menuCanvas != null && menuCanvas.gameObject.activeSelf)
+            {
+                menuCanvas.gameObject.SetActive(false);
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+            }
+            PoppyUIInputGate.SetMenuOpen(false);
+            if (corridorRoot != null) corridorRoot.gameObject.SetActive(false);
             if (characterPreview != null && characterPreview.name == "PoppyMenu_PlayerPreview")
                 characterPreview.gameObject.SetActive(false);
-            if (huggyPreview != null)
-                huggyPreview.gameObject.SetActive(false);
+            if (huggyPreview != null) huggyPreview.gameObject.SetActive(false);
             if (menuCamera != null)
             {
                 menuCamera.enabled = false;
                 AudioListener listener = menuCamera.GetComponent<AudioListener>();
-                if (listener != null)
-                    listener.enabled = false;
+                if (listener != null) listener.enabled = false;
             }
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
         }
+        else if (wasConnectedToSession)
+        {
+            wasConnectedToSession = false;
+            if (menuCanvas != null) menuCanvas.gameObject.SetActive(true);
+            if (corridorRoot != null) corridorRoot.gameObject.SetActive(true);
+            if (characterPreview != null) characterPreview.gameObject.SetActive(true);
+            if (huggyPreview != null) huggyPreview.gameObject.SetActive(true);
+            if (menuCamera != null)
+            {
+                menuCamera.enabled = true;
+                AudioListener listener = menuCamera.GetComponent<AudioListener>();
+                if (listener != null) listener.enabled = true;
+            }
+            PoppyUIInputGate.SetMenuOpen(true);
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+
+        if (walletLabel != null)
+            walletLabel.text = "CREDITS  " + PoppyShop.Credits + "      ★ TICKETS  " + PoppyShop.Tickets;
     }
 
     private void BuildCreepyCorridor()
@@ -245,6 +277,14 @@ public class PoppyMainMenu : MonoBehaviour
         CreatePanel("Left menu glass", menuCanvas.transform, new Vector2(0.035f, 0.08f),
             new Vector2(0.39f, 0.92f), new Color(0.012f, 0.018f, 0.024f, 0.88f));
 
+        CreateText("Creator credit", menuCanvas.transform, "CREATED BY CHOUGAN2",
+            14, new Vector2(0.055f, 0.935f), new Vector2(0.35f, 0.975f),
+            TextAlignmentOptions.Left, new Color(1f, 0.48f, 0.2f));
+        walletLabel = CreateText("Wallet", menuCanvas.transform, "",
+            17, new Vector2(0.62f, 0.92f), new Vector2(0.97f, 0.975f),
+            TextAlignmentOptions.Right, new Color(1f, 0.78f, 0.24f));
+        walletLabel.text = "CREDITS  " + PoppyShop.Credits + "      ★ TICKETS  " + PoppyShop.Tickets;
+
         CreateText("Poppy title", menuCanvas.transform, "PROJECT PLAYTIME\nREMADE",
             48, new Vector2(0.055f, 0.72f), new Vector2(0.34f, 0.18f),
             TextAlignmentOptions.Left, new Color(0.9f, 0.92f, 0.94f));
@@ -354,7 +394,7 @@ public class PoppyMainMenu : MonoBehaviour
     private void RefreshShop()
     {
         if (shopCreditsLabel != null)
-            shopCreditsLabel.text = "CREDITS  " + PoppyShop.Credits;
+            shopCreditsLabel.text = "CREDITS  " + PoppyShop.Credits + "     ★ TICKETS  " + PoppyShop.Tickets;
         if (shopStatusLabel != null)
             shopStatusLabel.text = "EQUIPPED: " + PoppyShop.GetColorName(PoppyShop.SelectedColor) +
                 "     •     CREDITS ARE EARNED AFTER MATCHES";
@@ -389,7 +429,9 @@ public class PoppyMainMenu : MonoBehaviour
         if (PoppyMonsterShop.IsUnlocked(index))
             return (PoppyMonsterShop.SelectedSkin == index ? "✓ " : "") +
                 PoppyMonsterShop.GetName(index) + "  •  OWNED";
-        return PoppyMonsterShop.GetName(index) + "  •  " + PoppyMonsterShop.GetPrice(index) + " C";
+        int ticketPrice = PoppyMonsterShop.GetTicketPrice(index);
+        return PoppyMonsterShop.GetName(index) + "  •  " +
+            (ticketPrice > 0 ? ticketPrice + " TICKETS" : PoppyMonsterShop.GetPrice(index) + " C");
     }
 
     private void BuyOrEquipMonsterSkin(int index)
@@ -398,7 +440,7 @@ public class PoppyMainMenu : MonoBehaviour
         if (shopStatusLabel != null)
             shopStatusLabel.text = success
                 ? "MONSTER EQUIPPED: " + PoppyMonsterShop.GetName(index)
-                : "NOT ENOUGH CREDITS FOR THIS MONSTER SKIN.";
+                : (PoppyMonsterShop.GetTicketPrice(index) > 0 ? "NOT ENOUGH TICKETS." : "NOT ENOUGH CREDITS.");
         RefreshShop();
         ApplyPreviewSkin();
     }
@@ -425,14 +467,20 @@ public class PoppyMainMenu : MonoBehaviour
     private void OpenShop()
     {
         isShopOpen = true;
+        PoppyUIInputGate.SetShopOpen(true);
         shopPanel.SetActive(true);
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
         RefreshShop();
     }
 
     private void CloseShop()
     {
         isShopOpen = false;
+        PoppyUIInputGate.SetShopOpen(false);
         shopPanel.SetActive(false);
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     private void StartSoloAI()
@@ -458,7 +506,9 @@ public class PoppyMainMenu : MonoBehaviour
             return;
         }
 
-        ConnectionManafer.PlayerName = playerNameInput.text.Trim();
+        ConnectionManafer.PlayerName = playerNameInput != null && !string.IsNullOrWhiteSpace(playerNameInput.text)
+            ? playerNameInput.text.Trim()
+            : "Player";
         connectionManager.HostAServer();
     }
 
@@ -470,9 +520,11 @@ public class PoppyMainMenu : MonoBehaviour
             return;
         }
 
-        ConnectionManafer.PlayerName = playerNameInput.text.Trim();
+        ConnectionManafer.PlayerName = playerNameInput != null && !string.IsNullOrWhiteSpace(playerNameInput.text)
+            ? playerNameInput.text.Trim()
+            : "Player";
         connectionManager.codeInputField = joinCodeInput;
-        if (string.IsNullOrWhiteSpace(joinCodeInput.text))
+        if (joinCodeInput == null || string.IsNullOrWhiteSpace(joinCodeInput.text))
             connectionManager.JoinRandomServer();
         else
             connectionManager.JoinWithCode();

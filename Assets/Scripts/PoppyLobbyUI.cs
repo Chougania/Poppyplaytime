@@ -13,15 +13,18 @@ public class PoppyLobbyUI : MonoBehaviour
     [Header("References")]
     public GameManager gameManager;
     public ConnectionManafer connectionManager;
+    public PoppyLobbyRoomBuilder roomBuilder;
 
     private Canvas canvas;
     private RectTransform rosterRoot;
     private TextMeshProUGUI statusText;
     private TextMeshProUGUI modeText;
+    private TextMeshProUGUI walletText;
     private Button readyButton;
     private Button startButton;
     private bool localReady;
     private bool wasInSession;
+    private bool wasInMatch;
     private bool isVisible;
     private float rosterRefreshTimer;
 
@@ -29,6 +32,9 @@ public class PoppyLobbyUI : MonoBehaviour
     {
         if (gameManager == null) gameManager = FindObjectOfType<GameManager>();
         if (connectionManager == null) connectionManager = FindObjectOfType<ConnectionManafer>();
+        if (roomBuilder == null) roomBuilder = FindObjectOfType<PoppyLobbyRoomBuilder>();
+        if (connectionManager != null && connectionManager.canvas2 != null)
+            connectionManager.canvas2.SetActive(false);
         BuildUI();
         SetVisible(false, false);
     }
@@ -46,14 +52,32 @@ public class PoppyLobbyUI : MonoBehaviour
         if (!connected)
         {
             if (isVisible) SetVisible(false, false);
+            if (roomBuilder != null && roomBuilder.lobbyCamera != null)
+            {
+                roomBuilder.lobbyCamera.enabled = false;
+                AudioListener lobbyListener = roomBuilder.lobbyCamera.GetComponent<AudioListener>();
+                if (lobbyListener != null) lobbyListener.enabled = false;
+            }
             return;
         }
 
         if (gameManager == null) gameManager = FindObjectOfType<GameManager>();
         bool inMatch = gameManager != null && gameManager.IsGameStarted;
+        if (inMatch != wasInMatch)
+        {
+            wasInMatch = inMatch;
+            localReady = false;
+            if (readyButton != null)
+            {
+                TMP_Text readyLabel = readyButton.GetComponentInChildren<TMP_Text>();
+                if (readyLabel != null) readyLabel.text = "JE SUIS PRÊT";
+            }
+        }
         bool shouldShow = !inMatch;
         if (shouldShow != isVisible)
             SetVisible(shouldShow, true);
+
+        ApplyLobbyCamera(shouldShow);
 
         if (!isVisible)
             return;
@@ -68,6 +92,8 @@ public class PoppyLobbyUI : MonoBehaviour
         modeText.text = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1
             ? "MODE : HUGGY IA  •  " + DifficultyName()
             : "MODE : MONSTRE JOUEUR";
+        if (walletText != null)
+            walletText.text = "CREDITS  " + PoppyShop.Credits + "     ★ TICKETS  " + PoppyShop.Tickets;
 
         if (readyButton != null) readyButton.interactable = !inMatch;
         if (startButton != null)
@@ -97,15 +123,17 @@ public class PoppyLobbyUI : MonoBehaviour
         GameObject panel = Panel("Lobby glass panel", root.transform, new Vector2(0.62f, 0.12f), new Vector2(0.97f, 0.88f),
             new Color(0.018f, 0.025f, 0.035f, 0.96f));
         Label("LOBBY", panel.transform, new Vector2(0.07f, 0.83f), new Vector2(0.93f, 0.96f), 38, Color.white);
-        statusText = Label("EN ATTENTE DES JOUEURS", panel.transform, new Vector2(0.07f, 0.75f), new Vector2(0.93f, 0.82f), 17, new Color(1f, 0.35f, 0.2f));
-        modeText = Label("", panel.transform, new Vector2(0.07f, 0.67f), new Vector2(0.93f, 0.74f), 15, new Color(0.65f, 0.8f, 1f));
-        Label("JOUEURS CONNECTÉS", panel.transform, new Vector2(0.07f, 0.58f), new Vector2(0.93f, 0.65f), 16, new Color(0.8f, 0.83f, 0.86f));
+        walletText = Label("CREDITS  " + PoppyShop.Credits + "     ★ TICKETS  " + PoppyShop.Tickets,
+            panel.transform, new Vector2(0.07f, 0.76f), new Vector2(0.93f, 0.82f), 15, new Color(1f, 0.78f, 0.24f));
+        statusText = Label("EN ATTENTE DES JOUEURS", panel.transform, new Vector2(0.07f, 0.69f), new Vector2(0.93f, 0.75f), 17, new Color(1f, 0.35f, 0.2f));
+        modeText = Label("", panel.transform, new Vector2(0.07f, 0.62f), new Vector2(0.93f, 0.68f), 15, new Color(0.65f, 0.8f, 1f));
+        Label("JOUEURS CONNECTÉS", panel.transform, new Vector2(0.07f, 0.54f), new Vector2(0.93f, 0.60f), 16, new Color(0.8f, 0.83f, 0.86f));
 
         GameObject roster = new GameObject("Player roster", typeof(RectTransform), typeof(VerticalLayoutGroup));
         roster.transform.SetParent(panel.transform, false);
         rosterRoot = roster.GetComponent<RectTransform>();
         rosterRoot.anchorMin = new Vector2(0.07f, 0.25f);
-        rosterRoot.anchorMax = new Vector2(0.93f, 0.57f);
+        rosterRoot.anchorMax = new Vector2(0.93f, 0.53f);
         rosterRoot.offsetMin = Vector2.zero;
         rosterRoot.offsetMax = Vector2.zero;
         VerticalLayoutGroup layout = roster.GetComponent<VerticalLayoutGroup>();
@@ -158,9 +186,32 @@ public class PoppyLobbyUI : MonoBehaviour
             gameManager.StartMatchFromLobby();
     }
 
+    private void ApplyLobbyCamera(bool showLobby)
+    {
+        if (roomBuilder == null) roomBuilder = FindObjectOfType<PoppyLobbyRoomBuilder>();
+        if (roomBuilder != null && roomBuilder.lobbyCamera != null)
+        {
+            roomBuilder.lobbyCamera.enabled = showLobby;
+            AudioListener listener = roomBuilder.lobbyCamera.GetComponent<AudioListener>();
+            if (listener != null) listener.enabled = showLobby;
+        }
+
+        DbUnityMovment[] players = FindObjectsOfType<DbUnityMovment>();
+        for (int i = 0; i < players.Length; i++)
+        {
+            DbUnityMovment player = players[i];
+            if (player == null || !player.IsOwner || player.cameraTransform == null) continue;
+            Camera camera = player.cameraTransform.GetComponent<Camera>();
+            AudioListener listener = player.cameraTransform.GetComponent<AudioListener>();
+            if (camera != null) camera.enabled = !showLobby;
+            if (listener != null) listener.enabled = !showLobby;
+        }
+    }
+
     private void SetVisible(bool visible, bool sessionActive)
     {
         isVisible = visible;
+        PoppyUIInputGate.SetLobbyOpen(visible);
         if (canvas != null) canvas.gameObject.SetActive(visible);
         if (visible)
         {
