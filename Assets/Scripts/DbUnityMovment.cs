@@ -42,6 +42,7 @@ public class DbUnityMovment : NetworkBehaviour
 
 	[Header("Survivor Stamina")]
 	[Min(0.1f)] public float maxStamina = 5f;
+	public bool showStaminaHUD = true;
 	[Min(0f)] public float staminaDrainPerSecond = 1f;
 	[Min(0f)] public float staminaRecoveryPerSecond = 0.8f;
 	[Min(0f)] public float staminaRecoveryDelay = 1.25f;
@@ -345,6 +346,34 @@ public class DbUnityMovment : NetworkBehaviour
 			_animator.SetBool("IsWalking", walk);
 			_animator.SetBool("IsSprinting", sprint);
 		}
+	}
+
+	private void OnGUI()
+	{
+		if (!showStaminaHUD || !IsSpawned || !IsOwner || maxStamina <= 0f ||
+			(monsterModelContainer != null && monsterModelContainer.activeSelf) ||
+			(survivorModelContainer != null && !survivorModelContainer.activeSelf))
+			return;
+
+		const float width = 220f;
+		const float height = 14f;
+		Rect background = new Rect((Screen.width - width) * 0.5f, Screen.height - 48f, width, height);
+		Color previousColor = GUI.color;
+
+		GUI.color = new Color(0.04f, 0.04f, 0.04f, 0.85f);
+		GUI.Box(background, GUIContent.none);
+
+		float fill = StaminaNormalized;
+		GUI.color = fill > 0.5f
+			? new Color(0.25f, 0.85f, 0.45f, 0.95f)
+			: (fill > exhaustedThreshold ? new Color(1f, 0.72f, 0.2f, 0.95f) : new Color(0.9f, 0.2f, 0.18f, 0.95f));
+		GUI.DrawTexture(new Rect(background.x + 2f, background.y + 2f,
+			(width - 4f) * fill, height - 4f), Texture2D.whiteTexture);
+
+		GUI.color = Color.white;
+		GUI.Label(new Rect(background.x, background.y - 19f, width, 18f),
+			_wasExhausted ? "ENDURANCE ÉPUISÉE" : "ENDURANCE");
+		GUI.color = previousColor;
 	}
 
 	private void HandleMonsterAttack()
