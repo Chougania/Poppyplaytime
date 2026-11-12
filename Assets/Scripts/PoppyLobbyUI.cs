@@ -24,6 +24,7 @@ public class PoppyLobbyUI : MonoBehaviour
     private Button startButton;
     private bool localReady;
     private bool wasInSession;
+    private bool wasInMatch;
     private bool isVisible;
     private float rosterRefreshTimer;
 
@@ -56,6 +57,16 @@ public class PoppyLobbyUI : MonoBehaviour
 
         if (gameManager == null) gameManager = FindObjectOfType<GameManager>();
         bool inMatch = gameManager != null && gameManager.IsGameStarted;
+        if (inMatch != wasInMatch)
+        {
+            wasInMatch = inMatch;
+            localReady = false;
+            if (readyButton != null)
+            {
+                TMP_Text readyLabel = readyButton.GetComponentInChildren<TMP_Text>();
+                if (readyLabel != null) readyLabel.text = "JE SUIS PRÊT";
+            }
+        }
         bool shouldShow = !inMatch;
         if (shouldShow != isVisible)
             SetVisible(shouldShow, true);
