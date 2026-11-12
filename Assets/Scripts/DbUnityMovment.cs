@@ -40,6 +40,20 @@ public class DbUnityMovment : NetworkBehaviour
 
 	public float gravity = 9.81f;
 
+	[Header("Survivor Stamina")]
+	[Min(0.1f)] public float maxStamina = 5f;
+	[Min(0f)] public float staminaDrainPerSecond = 1f;
+	[Min(0f)] public float staminaRecoveryPerSecond = 0.8f;
+	[Min(0f)] public float staminaRecoveryDelay = 1.25f;
+	[Range(0f, 1f)] public float exhaustedThreshold = 0.08f;
+
+	private float _stamina;
+	private float _lastSprintTime;
+	private bool _wasExhausted;
+
+	public float StaminaNormalized => maxStamina <= 0f ? 0f : Mathf.Clamp01(_stamina / maxStamina);
+	public bool IsExhausted => _wasExhausted;
+
 	[Header("Camera Settings")]
 	public Transform cameraTransform;
 
@@ -108,6 +122,7 @@ public class DbUnityMovment : NetworkBehaviour
 			Cursor.lockState = CursorLockMode.Locked;
 			Cursor.visible = false;
 			_currentCameraOffset = cameraOffset;
+			_stamina = Mathf.Max(0.1f, maxStamina);
 			if (cameraTransform != null)
 			{
 				cameraTransform.localPosition = cameraOffset;
