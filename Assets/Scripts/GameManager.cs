@@ -18,6 +18,12 @@ public class GameManager : NetworkBehaviour
 
 	public Transform monsterSpawnPoint;
 
+	[Header("Optional AI Enemy")]
+	[Tooltip("Network prefab with NetworkObject, server-authoritative NetworkTransform, NavMeshAgent and HuggyHunterAI.")]
+	public NetworkObject aiMonsterPrefab;
+
+	private NetworkObject spawnedAiMonster;
+
 	[Header("TextMesh Pro UI Elements")]
 	public TextMeshProUGUI timerText;
 
@@ -154,31 +160,64 @@ public class GameManager : NetworkBehaviour
 		if (!IsServer || NetworkManager.Singleton == null)
 			return;
 
-		IReadOnlyList<NetworkClient> connectedClientsList = NetworkManager.Singleton.ConnectedClientsList;
-		if (connectedClientsList.Count == 0)
+		IReadOnlyList<NetworkClient> clients = NetworkManager.Singleton.ConnectedClientsList;
+		if (clients.Count == 0)
+			return;
+
+		bool useAI = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 &&
+			aiMonsterPrefab != null && monsterSpawnPoint != null;
+
+		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
+			spawnedAiMonster.Despawn(true);
+		spawnedAiMonster = null;
+
+		if (useAI)
 		{
+			int survivorIndex = 0;
+			for (int i = 0; i < clients.Count; i++)
+			{
+				NetworkClient client = clients[i];
+				if (client.PlayerObject == null)
+					continue;
+
+				Vector3 spawn = survivorSpawnPoints != null && survivorSpawnPoints.Length > 0
+					? survivorSpawnPoints[survivorIndex % survivorSpawnPoints.Length].position
+					: transform.position;
+				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: false, isSurvivor: true);
+				NotifySingleClientRole(client.ClientId, "HUGGY IS HUNTING YOU. SURVIVE!");
+				survivorIndex++;
+			}
+
+			spawnedAiMonster = Instantiate(aiMonsterPrefab, monsterSpawnPoint.position, monsterSpawnPoint.rotation);
+			spawnedAiMonster.Spawn();
 			return;
 		}
-		int num = UnityEngine.Random.Range(0, connectedClientsList.Count);
-		int num2 = 0;
-		for (int i = 0; i < connectedClientsList.Count; i++)
+
+		if (PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 && aiMonsterPrefab == null)
+			Debug.LogWarning("AI mode was selected, but GameManager.aiMonsterPrefab is not assigned. Falling back to player-controlled monster.", this);
+
+		int monsterIndex = UnityEngine.Random.Range(0, clients.Count);
+		int survivorSpawnIndex = 0;
+		for (int i = 0; i < clients.Count; i++)
 		{
-			ulong clientId = connectedClientsList[i].ClientId;
-			if (!(connectedClientsList[i].PlayerObject == null))
+			NetworkClient client = clients[i];
+			if (client.PlayerObject == null)
+				continue;
+
+			if (i == monsterIndex)
 			{
-				if (i == num)
-				{
-					Vector3 targetPosition = ((monsterSpawnPoint != null) ? monsterSpawnPoint.position : transform.position);
-					ExecuteTargetedTeleport(clientId, targetPosition, isMonster: true, isSurvivor: false);
-					NotifySingleClientRole(clientId, "YOU ARE THE MONSTER! HUNT THE HIDERS!");
-				}
-				else
-				{
-					Vector3 targetPosition2 = ((survivorSpawnPoints != null && survivorSpawnPoints.Length != 0) ? survivorSpawnPoints[num2 % survivorSpawnPoints.Length].position : transform.position);
-					ExecuteTargetedTeleport(clientId, targetPosition2, isMonster: false, isSurvivor: true);
-					NotifySingleClientRole(clientId, "YOU ARE A HIDER! SURVIVE!");
-					num2++;
-				}
+				Vector3 spawn = monsterSpawnPoint != null ? monsterSpawnPoint.position : transform.position;
+				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: true, isSurvivor: false);
+				NotifySingleClientRole(client.ClientId, "YOU ARE THE MONSTER! HUNT THE HIDERS!");
+			}
+			else
+			{
+				Vector3 spawn = survivorSpawnPoints != null && survivorSpawnPoints.Length > 0
+					? survivorSpawnPoints[survivorSpawnIndex % survivorSpawnPoints.Length].position
+					: transform.position;
+				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: false, isSurvivor: true);
+				NotifySingleClientRole(client.ClientId, "YOU ARE A HIDER! SURVIVE!");
+				survivorSpawnIndex++;
 			}
 		}
 	}
@@ -295,12 +334,22 @@ public class GameManager : NetworkBehaviour
 		}
 	}
 
+	[ClientRpc]
+	private void GrantMatchCreditsClientRpc(int amount)
+	{
+		PoppyShop.AddCredits(amount);
+	}
+
 	private void EndGame()
 	{
 		if (!IsServer || NetworkManager.Singleton == null)
 			return;
 
 		_gameStarted = false;
+		GrantMatchCreditsClientRpc(100);
+		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
+			spawnedAiMonster.Despawn(true);
+		spawnedAiMonster = null;
 		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		foreach (NetworkClient connectedClients in NetworkManager.Singleton.ConnectedClientsList)
 		{
