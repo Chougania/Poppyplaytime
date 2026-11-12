@@ -1,191 +1,278 @@
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [RequireComponent(typeof(LineRenderer))]
 public class GrabpackHand : NetworkBehaviour
 {
-	public enum HandSide
-	{
-		LeftHand,
-		RightHand
-	}
+    public enum HandSide { LeftHand, RightHand }
+    public enum HandState { Idle, Shooting, Attached, Retracting }
 
-	public enum HandState
-	{
-		Idle,
-		Shooting,
-		Attached,
-		Retracting
-	}
+    [Header("Hand Identity")]
+    public HandSide handSide;
 
-	[Header("Hand Identity")]
-	public HandSide handSide;
+    [Header("Hand Setup")]
+    public GameObject handObject;
+    public Transform handSpawnPoint;
 
-	[Header("Hand Setup")]
-	public GameObject handObject;
+    [Header("Hand Physics & Distance")]
+    [Min(0.1f)] public float maxRange = 25f;
+    [Min(0.1f)] public float shootSpeed = 40f;
+    [Min(0.1f)] public float retractSpeed = 30f;
+    public LayerMask grabableLayers;
 
-	public Transform handSpawnPoint;
+    [Header("Rope Visuals")]
+    [Min(0.001f)] public float ropeStartWidth = 0.055f;
+    [Min(0.001f)] public float ropeEndWidth = 0.035f;
+    public Gradient ropeGradient;
+    [Min(0)] public int ropeCornerVertices = 4;
+    [Min(0)] public int ropeCapVertices = 4;
 
-	[Header("Hand Physics & Distance")]
-	public float maxRange = 25f;
+    private LineRenderer ropeRenderer;
+    private Camera playerCamera;
+    private HandState currentState;
+    private Vector3 targetHandPosition;
+    private Vector3 currentHandPosition;
+    private Quaternion shootRotation;
+    private GrabpackDraggableDoor attachedDoor;
+    private Transform originalParent;
+    private Vector3 originalLocalPosition;
+    private Quaternion originalLocalRotation;
 
-	public float shootSpeed = 40f;
+    public HandState CurrentState => currentState;
 
-	public float retractSpeed = 30f;
+    private void Awake()
+    {
+        ropeRenderer = GetComponent<LineRenderer>();
+        ConfigureRope();
+        currentState = HandState.Idle;
+    }
 
-	public LayerMask grabableLayers;
+    private void Start()
+    {
+        playerCamera = GetComponentInParent<Camera>();
+        if (playerCamera == null)
+            playerCamera = Camera.main;
 
-	private LineRenderer ropeRenderer;
+        if (handObject != null)
+        {
+            originalParent = handObject.transform.parent;
+            originalLocalPosition = handObject.transform.localPosition;
+            originalLocalRotation = handObject.transform.localRotation;
+        }
 
-	private Camera playerCamera;
+        if (handSpawnPoint != null && handObject != null)
+            ResetHandToIdle();
+    }
 
-	private HandState currentState;
+    private void ConfigureRope()
+    {
+        if (ropeRenderer == null)
+            return;
 
-	private Vector3 targetHandPosition;
+        ropeRenderer.positionCount = 0;
+        ropeRenderer.useWorldSpace = true;
+        ropeRenderer.startWidth = Mathf.Max(0.001f, ropeStartWidth);
+        ropeRenderer.endWidth = Mathf.Max(0.001f, ropeEndWidth);
+        ropeRenderer.numCornerVertices = ropeCornerVertices;
+        ropeRenderer.numCapVertices = ropeCapVertices;
+        ropeRenderer.alignment = LineAlignment.View;
+        ropeRenderer.textureMode = LineTextureMode.Tile;
+        ropeRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        ropeRenderer.receiveShadows = false;
 
-	private Vector3 currentHandPosition;
+        if (ropeGradient == null || ropeGradient.colorKeys == null || ropeGradient.colorKeys.Length == 0)
+        {
+            Color ropeColor = handSide == HandSide.LeftHand
+                ? new Color(0.12f, 0.65f, 1f, 1f)
+                : new Color(1f, 0.22f, 0.16f, 1f);
 
-	private Quaternion shootRotation;
+            ropeGradient = new Gradient();
+            ropeGradient.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(ropeColor, 0f),
+                    new GradientColorKey(ropeColor * 0.8f, 1f)
+                },
+                new[]
+                {
+                    new GradientAlphaKey(0.95f, 0f),
+                    new GradientAlphaKey(0.85f, 1f)
+                });
+        }
 
-	private GrabpackDraggableDoor attachedDoor;
+        ropeRenderer.colorGradient = ropeGradient;
+    }
 
-	private Transform originalParent;
+    private void Update()
+    {
+        if (!IsSpawned || !IsOwner)
+            return;
 
-	public HandState CurrentState => currentState;
+        UpdateHandMovement();
+        UpdateRopeVisuals();
+    }
 
-	private void Awake()
-	{
-		ropeRenderer = GetComponent<LineRenderer>();
-		ropeRenderer.startWidth = 0.05f;
-		ropeRenderer.endWidth = 0.05f;
-		ropeRenderer.positionCount = 0;
-	}
+    public void Fire(Vector3 targetPoint, GrabpackDraggableDoor door)
+    {
+        if (currentState != HandState.Idle || handObject == null || handSpawnPoint == null)
+            return;
 
-	private void Start()
-	{
-		playerCamera = Camera.main;
-		if (handObject != null)
-		{
-			originalParent = handObject.transform.parent;
-		}
-	}
+        Vector3 direction = targetPoint - handSpawnPoint.position;
+        if (direction.sqrMagnitude > maxRange * maxRange)
+            targetPoint = handSpawnPoint.position + direction.normalized * maxRange;
 
-	private void Update()
-	{
-		if (IsOwner)
-		{
-			UpdateHandMovement();
-			UpdateRopeVisuals();
-		}
-	}
+        currentState = HandState.Shooting;
+        currentHandPosition = handSpawnPoint.position;
+        targetHandPosition = targetPoint;
+        attachedDoor = door;
+        shootRotation = playerCamera != null
+            ? playerCamera.transform.rotation
+            : handSpawnPoint.rotation;
 
-	public void Fire(Vector3 targetPoint, GrabpackDraggableDoor door)
-	{
-		if (currentState == HandState.Idle && !(handObject == null) && !(handSpawnPoint == null))
-		{
-			currentState = HandState.Shooting;
-			currentHandPosition = handSpawnPoint.position;
-			targetHandPosition = targetPoint;
-			attachedDoor = door;
-			shootRotation = playerCamera.transform.rotation;
-			handObject.transform.SetParent(null);
-		}
-	}
+        handObject.transform.SetParent(null, true);
+        handObject.transform.position = currentHandPosition;
+        handObject.transform.rotation = shootRotation;
 
-	public void Retract()
-	{
-		if (currentState != HandState.Idle && currentState != HandState.Retracting)
-		{
-			currentState = HandState.Retracting;
-			if (attachedDoor != null)
-			{
-				attachedDoor.StopGrabInteraction();
-				attachedDoor = null;
-			}
-			if (handObject != null)
-			{
-				handObject.transform.SetParent(null);
-			}
-		}
-	}
+        if (ropeRenderer != null)
+            ropeRenderer.enabled = true;
+    }
 
-	private void UpdateHandMovement()
-	{
-		if (handObject == null || handSpawnPoint == null)
-		{
-			return;
-		}
-		switch (currentState)
-		{
-		case HandState.Shooting:
-		{
-			currentHandPosition = Vector3.MoveTowards(currentHandPosition, targetHandPosition, shootSpeed * Time.deltaTime);
-			handObject.transform.position = currentHandPosition;
-			handObject.transform.rotation = shootRotation;
-			if (!(Vector3.Distance(currentHandPosition, targetHandPosition) < 0.1f))
-			{
-				break;
-			}
-			Collider[] array = Physics.OverlapSphere(currentHandPosition, 0.2f, grabableLayers);
-			bool flag = false;
-			Collider[] array2 = array;
-			foreach (Collider collider in array2)
-			{
-				if (collider.CompareTag("Grab") || collider.CompareTag("Door") || collider.CompareTag("Battery") || LayerMask.LayerToName(collider.gameObject.layer) == "Grabable")
-				{
-					currentState = HandState.Attached;
-					handObject.transform.SetParent(collider.transform);
-					flag = true;
-					break;
-				}
-			}
-			if (!flag && attachedDoor != null)
-			{
-				currentState = HandState.Attached;
-				handObject.transform.SetParent(attachedDoor.transform);
-				flag = true;
-			}
-			if (!flag)
-			{
-				Retract();
-			}
-			break;
-		}
-		case HandState.Attached:
-			currentHandPosition = handObject.transform.position;
-			break;
-		case HandState.Retracting:
-			currentHandPosition = Vector3.MoveTowards(currentHandPosition, handSpawnPoint.position, retractSpeed * Time.deltaTime);
-			handObject.transform.position = currentHandPosition;
-			handObject.transform.rotation = shootRotation;
-			if (Vector3.Distance(currentHandPosition, handSpawnPoint.position) < 0.2f)
-			{
-				ResetHandToIdle();
-			}
-			break;
-		}
-	}
+    public void Retract()
+    {
+        if (currentState == HandState.Idle || currentState == HandState.Retracting)
+            return;
 
-	private void ResetHandToIdle()
-	{
-		currentState = HandState.Idle;
-		ropeRenderer.positionCount = 0;
-		if (handObject != null && handSpawnPoint != null)
-		{
-			handObject.transform.SetParent(originalParent);
-			handObject.transform.position = handSpawnPoint.position;
-			handObject.transform.rotation = handSpawnPoint.rotation;
-		}
-	}
+        currentState = HandState.Retracting;
 
-	private void UpdateRopeVisuals()
-	{
-		if (currentState != HandState.Idle && !(handSpawnPoint == null))
-		{
-			ropeRenderer.positionCount = 2;
-			ropeRenderer.SetPosition(0, handSpawnPoint.position);
-			ropeRenderer.SetPosition(1, currentHandPosition);
-		}
-	}
+        if (attachedDoor != null)
+        {
+            attachedDoor.StopGrabInteraction();
+            attachedDoor = null;
+        }
+
+        if (handObject != null)
+            handObject.transform.SetParent(null, true);
+    }
+
+    private void UpdateHandMovement()
+    {
+        if (handObject == null || handSpawnPoint == null)
+            return;
+
+        switch (currentState)
+        {
+            case HandState.Shooting:
+                currentHandPosition = Vector3.MoveTowards(
+                    currentHandPosition,
+                    targetHandPosition,
+                    Mathf.Max(0.1f, shootSpeed) * Time.deltaTime);
+
+                handObject.transform.SetPositionAndRotation(currentHandPosition, shootRotation);
+
+                if ((currentHandPosition - targetHandPosition).sqrMagnitude > 0.01f)
+                    break;
+
+                AttachToTarget();
+                break;
+
+            case HandState.Attached:
+                currentHandPosition = handObject.transform.position;
+                break;
+
+            case HandState.Retracting:
+                currentHandPosition = Vector3.MoveTowards(
+                    currentHandPosition,
+                    handSpawnPoint.position,
+                    Mathf.Max(0.1f, retractSpeed) * Time.deltaTime);
+
+                handObject.transform.SetPositionAndRotation(currentHandPosition, shootRotation);
+
+                if ((currentHandPosition - handSpawnPoint.position).sqrMagnitude <= 0.04f)
+                    ResetHandToIdle();
+                break;
+        }
+    }
+
+    private void AttachToTarget()
+    {
+        Collider[] hits = Physics.OverlapSphere(currentHandPosition, 0.2f, grabableLayers, QueryTriggerInteraction.Ignore);
+
+        for (int i = 0; i < hits.Length; i++)
+        {
+            Collider hit = hits[i];
+            if (hit == null)
+                continue;
+
+            bool isGrabable = hit.CompareTag("Grab")
+                || hit.CompareTag("Door")
+                || hit.CompareTag("Battery")
+                || LayerMask.LayerToName(hit.gameObject.layer) == "Grabable";
+
+            if (!isGrabable)
+                continue;
+
+            currentState = HandState.Attached;
+            handObject.transform.SetParent(hit.transform, true);
+            currentHandPosition = handObject.transform.position;
+            return;
+        }
+
+        if (attachedDoor != null)
+        {
+            currentState = HandState.Attached;
+            handObject.transform.SetParent(attachedDoor.transform, true);
+            currentHandPosition = handObject.transform.position;
+            return;
+        }
+
+        Retract();
+    }
+
+    private void ResetHandToIdle()
+    {
+        currentState = HandState.Idle;
+        attachedDoor = null;
+
+        if (ropeRenderer != null)
+        {
+            ropeRenderer.positionCount = 0;
+            ropeRenderer.enabled = false;
+        }
+
+        if (handObject == null || handSpawnPoint == null)
+            return;
+
+        handObject.transform.SetParent(originalParent, false);
+        handObject.transform.localPosition = originalLocalPosition;
+        handObject.transform.localRotation = originalLocalRotation;
+        handObject.transform.SetPositionAndRotation(handSpawnPoint.position, handSpawnPoint.rotation);
+
+        currentHandPosition = handSpawnPoint.position;
+        targetHandPosition = currentHandPosition;
+    }
+
+    private void UpdateRopeVisuals()
+    {
+        if (ropeRenderer == null || handSpawnPoint == null || currentState == HandState.Idle)
+            return;
+
+        if (!ropeRenderer.enabled)
+            ropeRenderer.enabled = true;
+
+        if (ropeRenderer.positionCount != 2)
+            ropeRenderer.positionCount = 2;
+
+        ropeRenderer.SetPosition(0, handSpawnPoint.position);
+        ropeRenderer.SetPosition(1, currentHandPosition);
+    }
+
+    private void OnDisable()
+    {
+        if (ropeRenderer != null)
+        {
+            ropeRenderer.positionCount = 0;
+            ropeRenderer.enabled = false;
+        }
+    }
 }
-
