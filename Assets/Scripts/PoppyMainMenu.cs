@@ -197,9 +197,17 @@ public class PoppyMainMenu : MonoBehaviour
 
     private Material CreateMaterial(string materialName, Color color)
     {
-        Shader shader = Shader.Find("Standard");
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
         if (shader == null)
-            shader = Shader.Find("Universal Render Pipeline/Lit");
+            shader = Shader.Find("Standard");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+
+        if (shader == null)
+        {
+            Debug.LogError("PoppyMainMenu: no compatible shader was found for " + materialName + ".", this);
+            return null;
+        }
 
         Material material = new Material(shader);
         material.name = materialName;
@@ -258,8 +266,9 @@ public class PoppyMainMenu : MonoBehaviour
         CreateButton("JOIN BUTTON", menuCanvas.transform, "JOIN SESSION / QUICK JOIN",
             new Vector2(0.06f, 0.30f), new Vector2(0.31f, 0.07f), JoinSession);
 
-        modeLabel = CreateButton("MODE BUTTON", menuCanvas.transform, GetModeLabel(),
+        Button modeButton = CreateButton("MODE BUTTON", menuCanvas.transform, GetModeLabel(),
             new Vector2(0.06f, 0.215f), new Vector2(0.15f, 0.06f), ToggleEnemyMode);
+        modeLabel = modeButton != null ? modeButton.GetComponentInChildren<TextMeshProUGUI>() : null;
         CreateButton("SHOP BUTTON", menuCanvas.transform, "TOY SHOP",
             new Vector2(0.22f, 0.215f), new Vector2(0.15f, 0.06f), OpenShop);
         CreateButton("QUIT BUTTON", menuCanvas.transform, "QUIT",
