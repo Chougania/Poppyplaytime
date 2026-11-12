@@ -193,14 +193,27 @@ public class HuggyHunterAI : NetworkBehaviour
         if (distance > visionRange || Vector3.Angle(transform.forward, direction) > visionAngle * 0.5f)
             return false;
 
-        if (Physics.Raycast(origin, direction.normalized, out RaycastHit hit,
-            distance, obstructionMask, QueryTriggerInteraction.Ignore))
+        RaycastHit[] hits = Physics.RaycastAll(origin, direction.normalized, distance,
+            obstructionMask, QueryTriggerInteraction.Ignore);
+
+        float nearestDistance = float.MaxValue;
+        DbUnityMovment firstVisiblePlayer = null;
+        for (int i = 0; i < hits.Length; i++)
         {
-            DbUnityMovment hitPlayer = hit.collider.GetComponentInParent<DbUnityMovment>();
-            return hitPlayer == candidate;
+            Transform hitTransform = hits[i].collider != null ? hits[i].collider.transform : null;
+            if (hitTransform == null || hitTransform == transform || hitTransform.IsChildOf(transform))
+                continue;
+
+            if (hits[i].distance >= nearestDistance)
+                continue;
+
+            nearestDistance = hits[i].distance;
+            firstVisiblePlayer = hits[i].collider.GetComponentInParent<DbUnityMovment>();
+            if (firstVisiblePlayer == null)
+                return false;
         }
 
-        return true;
+        return firstVisiblePlayer == null || firstVisiblePlayer == candidate;
     }
 
     private void UpdatePatrol()
