@@ -277,10 +277,7 @@ public class GameManager : NetworkBehaviour
 			{
 				component.deadModelContainer.SetActive(value: false);
 			}
-			if (value.IsOwner)
-			{
-				component.SetGrabpackStatus(isSurvivor);
-			}
+			component.SetEliminatedState(!isSurvivor && !isMonster, isSurvivor);
 		}
 		if (component3 != null)
 		{
