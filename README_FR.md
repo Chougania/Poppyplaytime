@@ -61,7 +61,7 @@ Les crédits sont actuellement une économie locale de prototype, pas un portefe
 
 ### Mode ennemi IA
 Le bouton `ENEMY: PLAYER / ENEMY: AI` mémorise le choix sur la machine de l'hôte.
-En mode AI, GameManager fait apparaître `aiMonsterPrefab` et tous les joueurs humains deviennent des survivants. Si aucun prefab AI n'est assigné, le jeu revient au mode monstre-joueur.
+En mode AI, GameManager fait apparaître `aiMonsterPrefab` et tous les joueurs humains deviennent des survivants. Une partie solo est autorisée dans ce mode si le prefab et le point d'apparition IA sont configurés. Si aucun prefab AI n'est assigné, le jeu revient au mode monstre-joueur.
 
 **Créer le prefab Huggy :**
 1. Ouvrez la scène `Lobby` dans Unity 2022.3.62f3.
