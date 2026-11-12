@@ -343,6 +343,26 @@ public class GameManager : NetworkBehaviour
 		PoppyShop.AddCredits(amount);
 	}
 
+	private void ResetRoundProgression()
+	{
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+
+		foreach (NetworkClient client in NetworkManager.Singleton.ConnectedClientsList)
+		{
+			if (client.PlayerObject == null)
+				continue;
+
+			GrabpackProgression progression = client.PlayerObject.GetComponent<GrabpackProgression>();
+			if (progression != null)
+				progression.ResetForNewMatch();
+		}
+
+		GrabpackUnlockStation[] stations = FindObjectsOfType<GrabpackUnlockStation>(true);
+		for (int i = 0; i < stations.Length; i++)
+			stations[i].ResetForNewMatch();
+	}
+
 	private void EndGame()
 	{
 		if (!IsServer || NetworkManager.Singleton == null)
