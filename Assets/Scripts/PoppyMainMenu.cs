@@ -262,24 +262,26 @@ public class PoppyMainMenu : MonoBehaviour
         joinCodeInput = CreateInput("Join code", menuCanvas.transform, "RELAY CODE (OPTIONAL)",
             new Vector2(0.06f, 0.48f), new Vector2(0.31f, 0.055f));
 
-        CreateButton("HOST BUTTON", menuCanvas.transform, "CREATE SESSION",
-            new Vector2(0.06f, 0.385f), new Vector2(0.31f, 0.07f), HostSession);
-        CreateButton("JOIN BUTTON", menuCanvas.transform, "JOIN SESSION / QUICK JOIN",
-            new Vector2(0.06f, 0.30f), new Vector2(0.31f, 0.07f), JoinSession);
+        CreateButton("SOLO AI BUTTON", menuCanvas.transform, "SOLO  •  PLAY AGAINST HUGGY",
+            new Vector2(0.06f, 0.385f), new Vector2(0.31f, 0.065f), StartSoloAI);
+        CreateButton("HOST BUTTON", menuCanvas.transform, "CREATE ONLINE SESSION",
+            new Vector2(0.06f, 0.305f), new Vector2(0.31f, 0.065f), HostSession);
+        CreateButton("JOIN BUTTON", menuCanvas.transform, "JOIN / QUICK JOIN",
+            new Vector2(0.06f, 0.225f), new Vector2(0.31f, 0.065f), JoinSession);
 
         Button modeButton = CreateButton("MODE BUTTON", menuCanvas.transform, GetModeLabel(),
-            new Vector2(0.06f, 0.215f), new Vector2(0.095f, 0.06f), ToggleEnemyMode);
+            new Vector2(0.06f, 0.145f), new Vector2(0.095f, 0.055f), ToggleEnemyMode);
         modeLabel = modeButton != null ? modeButton.GetComponentInChildren<TextMeshProUGUI>() : null;
         Button difficultyButton = CreateButton("AI DIFFICULTY BUTTON", menuCanvas.transform,
-            GetDifficultyLabel(), new Vector2(0.165f, 0.215f), new Vector2(0.105f, 0.06f), CycleDifficulty);
+            GetDifficultyLabel(), new Vector2(0.165f, 0.145f), new Vector2(0.105f, 0.055f), CycleDifficulty);
         difficultyLabel = difficultyButton != null ? difficultyButton.GetComponentInChildren<TextMeshProUGUI>() : null;
         CreateButton("SHOP BUTTON", menuCanvas.transform, "SHOP",
-            new Vector2(0.28f, 0.215f), new Vector2(0.09f, 0.06f), OpenShop);
+            new Vector2(0.28f, 0.145f), new Vector2(0.09f, 0.055f), OpenShop);
         CreateButton("QUIT BUTTON", menuCanvas.transform, "QUIT",
-            new Vector2(0.06f, 0.13f), new Vector2(0.31f, 0.055f), QuitGame);
+            new Vector2(0.06f, 0.075f), new Vector2(0.31f, 0.05f), QuitGame);
 
         CreateText("Menu footer", menuCanvas.transform, "PLAYTIME CO.  •  EXPERIMENTAL BUILD",
-            11, new Vector2(0.055f, 0.045f), new Vector2(0.34f, 0.035f),
+            11, new Vector2(0.055f, 0.025f), new Vector2(0.34f, 0.035f),
             TextAlignmentOptions.Left, new Color(0.42f, 0.46f, 0.5f));
 
         if (connectionManager != null)
@@ -431,6 +433,21 @@ public class PoppyMainMenu : MonoBehaviour
     {
         isShopOpen = false;
         shopPanel.SetActive(false);
+    }
+
+    private void StartSoloAI()
+    {
+        PlayerPrefs.SetInt("Poppy.EnemyMode", 1);
+        PlayerPrefs.Save();
+        if (modeLabel != null)
+            modeLabel.text = GetModeLabel();
+        if (connectionManager == null)
+        {
+            Debug.LogError("PoppyMainMenu: ConnectionManafer is missing.", this);
+            return;
+        }
+        ConnectionManafer.PlayerName = playerNameInput != null ? playerNameInput.text.Trim() : "Player";
+        connectionManager.HostSoloOffline();
     }
 
     private void HostSession()

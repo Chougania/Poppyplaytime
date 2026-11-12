@@ -117,3 +117,31 @@ L'IA patrouille, détecte les survivants dans son champ de vision, poursuit leur
 
 ### Validation obligatoire
 Ces fonctions ont été ajoutées au code source, mais elles n'ont pas encore été ouvertes, compilées ou testées dans Unity dans cet environnement. Il faut notamment vérifier la génération du prefab, l'enregistrement Network Prefabs, le bake NavMesh, le rendu du menu et les achats/synchronisations en Host + Client.
+
+
+## Mise à jour : solo hors ligne et lobby amélioré
+
+La branche `upgrade/solo-ai-lobby-v2` ajoute :
+
+- **Solo hors ligne** : le bouton `SOLO • PLAY AGAINST HUGGY` démarre un hôte local Netcode directement, sans Auth, Lobby ou Relay. Le joueur affronte Huggy IA seul.
+- **Modes en ligne** : création de session et connexion Relay restent disponibles. Le mode IA permet plusieurs survivants contre Huggy ; le mode joueur conserve le monstre contrôlé par un joueur.
+- **Lobby runtime** : panneau sombre, roster des joueurs, statut prêt/en attente, difficulté et mode sélectionnés, bouton de lancement réservé à l'hôte.
+- **Prêt obligatoire** : chaque joueur doit se déclarer prêt. Le lancement solo IA exige un joueur et un prefab IA configuré ; le mode monstre-joueur exige au moins deux joueurs.
+- **Fin de manche** : le lobby revient à l'écran après la manche ; la progression de GrabPack, les stations et les puzzles sont réinitialisés. Les crédits et cosmétiques restent sauvegardés localement.
+
+### Configuration requise
+
+1. Ouvrir le projet avec Unity **2022.3.62f3** et laisser importer les scripts.
+2. Dans la scène `Lobby`, conserver le `NetworkManager`, son `UnityTransport`, le `ConnectionManafer` et le `GameManager`.
+3. Dans `GameManager`, assigner `aiMonsterPrefab`, `monsterSpawnPoint`, `lobbySpawnPoint` et les `survivorSpawnPoints`.
+4. Générer le prefab IA avec `Tools > Poppy Playtime > Create AI Network Prefab From Selected Huggy`, puis l'ajouter à `NetworkConfig > Network Prefabs`.
+5. Sur la carte, ajouter et baker un `NavMeshSurface`. Le point de spawn de Huggy doit être posé sur la surface navigable.
+6. Vérifier que la scène `Lobby` est incluse dans Build Settings et que le prefab joueur est assigné au NetworkManager.
+
+### Persistance
+
+Aucune sauvegarde de manche ou de monde n'est ajoutée. Seuls les crédits, achats et sélections cosmétiques restent persistants via PlayerPrefs. Les crédits PlayerPrefs sont une économie de prototype locale et ne sont pas protégés contre la triche.
+
+### Validation
+
+Les changements ont été relus statiquement et poussés dans cette branche Git. La compilation Unity, le Play Mode, le bake NavMesh, le lancement offline et les tests Host/Client doivent encore être exécutés dans l'éditeur Unity ; aucun résultat de compilation ou test d'exécution n'est revendiqué ici.

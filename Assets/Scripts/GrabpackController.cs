@@ -430,7 +430,8 @@ public class GrabpackController : NetworkBehaviour
 			if (!isHeld)
 			{
 				component.velocity = Vector3.zero;
-				component.AddForce(playerCamera.forward * 4f, ForceMode.VelocityChange);
+				Vector3 dropDirection = playerCamera != null ? playerCamera.forward : transform.forward;
+				component.AddForce(dropDirection * 4f, ForceMode.VelocityChange);
 			}
 		}
 		networkObject.transform.SetParent(null);

@@ -36,8 +36,74 @@ public class GameManager : NetworkBehaviour
 	public int gameDurationSeconds = 180;
 
 	private NetworkVariable<int> _netTimer = new NetworkVariable<int>(180, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+	private NetworkVariable<bool> _netGameStarted = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+	private NetworkList<ulong> _readyClients = new NetworkList<ulong>();
+	private readonly HashSet<ulong> _eliminatedClients = new HashSet<ulong>();
 
 	private bool _gameStarted;
+
+	public bool IsGameStarted => _netGameStarted.Value;
+	public bool IsClientReady(ulong clientId) => _readyClients.Contains(clientId);
+	public bool IsClientEliminated(ulong clientId) => _eliminatedClients.Contains(clientId);
+
+	public bool CanStartMatch
+	{
+		get
+		{
+			if (!IsServer || NetworkManager.Singleton == null || _gameStarted)
+				return false;
+
+			int count = NetworkManager.Singleton.ConnectedClientsList.Count;
+			bool useAI = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1;
+			bool validMode = useAI
+				? aiMonsterPrefab != null && monsterSpawnPoint != null && count >= 1
+				: count >= 2;
+
+			if (!validMode)
+				return false;
+
+			foreach (NetworkClient client in NetworkManager.Singleton.ConnectedClientsList)
+			{
+				if (!_readyClients.Contains(client.ClientId))
+					return false;
+			}
+			return true;
+		}
+		}
+	}
+
+	public void StartMatchFromLobby()
+	{
+		if (!CanStartMatch)
+			return;
+
+		if (hostStartPromptUI != null)
+			hostStartPromptUI.SetActive(false);
+		StartCoroutine(StartGameLoop());
+	}
+
+	public void SetLocalReady(bool ready)
+	{
+		if (IsSpawned)
+			SetReadyServerRpc(ready);
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	private void SetReadyServerRpc(bool ready, ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+
+		ulong sender = rpcParams.Receive.SenderClientId;
+		if (!NetworkManager.Singleton.ConnectedClients.ContainsKey(sender))
+			return;
+
+		bool currentlyReady = _readyClients.Contains(sender);
+		if (ready && !currentlyReady)
+			_readyClients.Add(sender);
+		else if (!ready && currentlyReady)
+			_readyClients.Remove(sender);
+	}
 
 	private void OnValidate()
 	{
@@ -72,6 +138,8 @@ public class GameManager : NetworkBehaviour
 
 		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
+		NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
+		_readyClients.Clear();
 		SpawnAndSyncNetworkedObjects();
 	}
 
@@ -81,18 +149,27 @@ public class GameManager : NetworkBehaviour
 		if (IsServer && NetworkManager.Singleton != null)
 		{
 			NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
+			NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnected;
 		}
 	}
 
 	private void Update()
 	{
-		if (!IsServer || _gameStarted || NetworkManager.Singleton == null)
+		if (!IsServer || NetworkManager.Singleton == null)
 			return;
 
-		int connectedCount = NetworkManager.Singleton.ConnectedClientsList.Count;
-		bool aiSoloReady = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 &&
-			aiMonsterPrefab != null && monsterSpawnPoint != null;
-		bool canStartMatch = connectedCount >= 2 || (connectedCount >= 1 && aiSoloReady);
+		if (_gameStarted)
+		{
+			if (PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 &&
+				NetworkManager.Singleton.ConnectedClientsList.Count > 0 &&
+				_eliminatedClients.Count >= NetworkManager.Singleton.ConnectedClientsList.Count)
+			{
+				EndGame();
+			}
+			return;
+		}
+
+		bool canStartMatch = CanStartMatch;
 
 		if (canStartMatch)
 		{
@@ -127,6 +204,12 @@ public class GameManager : NetworkBehaviour
 		}
 	}
 
+	private void OnClientDisconnected(ulong clientId)
+	{
+		if (IsServer && _readyClients.Contains(clientId))
+			_readyClients.Remove(clientId);
+	}
+
 	private void SpawnAndSyncNetworkedObjects()
 	{
 		if (!IsServer || networkedObjects == null)
@@ -147,6 +230,8 @@ public class GameManager : NetworkBehaviour
 			yield break;
 
 		_gameStarted = true;
+		_netGameStarted.Value = true;
+		_eliminatedClients.Clear();
 		ResetRoundProgression();
 		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		SetRoleNotificationClientRpc("Assigning Roles...");
@@ -166,12 +251,23 @@ public class GameManager : NetworkBehaviour
 		if (!IsServer || NetworkManager.Singleton == null)
 			return;
 
-		IReadOnlyList<NetworkClient> clients = NetworkManager.Singleton.ConnectedClientsList;
+		List<NetworkClient> clients = new List<NetworkClient>();
+		foreach (NetworkClient connectedClient in NetworkManager.Singleton.ConnectedClientsList)
+		{
+			if (connectedClient != null && connectedClient.PlayerObject != null)
+				clients.Add(connectedClient);
+		}
 		if (clients.Count == 0)
 			return;
 
-		bool useAI = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 &&
-			aiMonsterPrefab != null && monsterSpawnPoint != null;
+		bool useAI = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1;
+		if (useAI && (aiMonsterPrefab == null || monsterSpawnPoint == null))
+		{
+			Debug.LogError("AI mode cannot start: assign aiMonsterPrefab and monsterSpawnPoint in GameManager.", this);
+			_gameStarted = false;
+			_netGameStarted.Value = false;
+			return;
+		}
 
 		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
 			spawnedAiMonster.Despawn(true);
@@ -198,9 +294,6 @@ public class GameManager : NetworkBehaviour
 			spawnedAiMonster.Spawn();
 			return;
 		}
-
-		if (PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 && aiMonsterPrefab == null)
-			Debug.LogWarning("AI mode was selected, but GameManager.aiMonsterPrefab is not assigned. Falling back to player-controlled monster.", this);
 
 		int monsterIndex = UnityEngine.Random.Range(0, clients.Count);
 		int survivorSpawnIndex = 0;
@@ -230,6 +323,14 @@ public class GameManager : NetworkBehaviour
 
 	public void ExecuteTargetedTeleport(ulong clientId, Vector3 targetPosition, bool isMonster, bool isSurvivor)
 	{
+		if (IsServer)
+		{
+			if (!isSurvivor && !isMonster)
+				_eliminatedClients.Add(clientId);
+			else if (isSurvivor)
+				_eliminatedClients.Remove(clientId);
+		}
+
 		if (IsServer && NetworkManager.Singleton != null &&
 			NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var value) &&
 			value.PlayerObject != null)
@@ -374,6 +475,9 @@ public class GameManager : NetworkBehaviour
 			return;
 
 		_gameStarted = false;
+		_netGameStarted.Value = false;
+		_eliminatedClients.Clear();
+		_readyClients.Clear();
 		ResetRoundProgression();
 		GrantMatchCreditsClientRpc(100);
 		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)

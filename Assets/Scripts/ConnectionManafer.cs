@@ -126,6 +126,36 @@ public class ConnectionManafer : MonoBehaviour
 			.Trim();
 	}
 
+	/// <summary>Starts a local host without Authentication, Lobby or Relay services.</summary>
+	public void HostSoloOffline()
+	{
+		if (networkManager == null)
+			networkManager = NetworkManager.Singleton;
+
+		if (networkManager == null)
+		{
+			Debug.LogError("[Netcode] Solo mode cannot start: NetworkManager is missing.");
+			return;
+		}
+
+		if (networkManager.IsListening)
+		{
+			Debug.LogWarning("[Netcode] A session is already active; cannot start offline solo.");
+			return;
+		}
+
+		SavePlayerName();
+		if (networkManager.StartHost())
+		{
+			Debug.Log("[Netcode] Offline solo host started.");
+			TransitionUI();
+		}
+		else
+		{
+			Debug.LogError("[Netcode] Offline solo StartHost failed. Check Player Prefab and UnityTransport configuration.");
+		}
+	}
+
 	public async void HostAServer()
 	{
 		if (networkManager == null)
