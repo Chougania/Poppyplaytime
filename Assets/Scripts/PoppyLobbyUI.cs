@@ -22,13 +22,15 @@ public class PoppyLobbyUI : MonoBehaviour
     private Button startButton;
     private bool localReady;
     private bool wasInSession;
+    private bool isVisible;
+    private float rosterRefreshTimer;
 
     private void Start()
     {
         if (gameManager == null) gameManager = FindObjectOfType<GameManager>();
         if (connectionManager == null) connectionManager = FindObjectOfType<ConnectionManafer>();
         BuildUI();
-        SetVisible(false);
+        SetVisible(false, false);
     }
 
     private void Update()
@@ -38,16 +40,30 @@ public class PoppyLobbyUI : MonoBehaviour
         if (connected != wasInSession)
         {
             wasInSession = connected;
-            SetVisible(connected);
             localReady = false;
         }
 
-        if (!connected || canvas == null || !canvas.gameObject.activeSelf)
+        if (!connected)
+        {
+            if (isVisible) SetVisible(false, false);
             return;
+        }
 
         if (gameManager == null) gameManager = FindObjectOfType<GameManager>();
-        RefreshRoster();
         bool inMatch = gameManager != null && gameManager.IsGameStarted;
+        bool shouldShow = !inMatch;
+        if (shouldShow != isVisible)
+            SetVisible(shouldShow, true);
+
+        if (!isVisible)
+            return;
+
+        rosterRefreshTimer -= Time.unscaledDeltaTime;
+        if (rosterRefreshTimer <= 0f)
+        {
+            rosterRefreshTimer = 0.5f;
+            RefreshRoster();
+        }
         statusText.text = inMatch ? "PARTIE EN COURS  •  BONNE CHANCE" : "EN ATTENTE DES JOUEURS";
         modeText.text = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1
             ? "MODE : HUGGY IA  •  " + DifficultyName()
@@ -142,11 +158,20 @@ public class PoppyLobbyUI : MonoBehaviour
             gameManager.StartMatchFromLobby();
     }
 
-    private void SetVisible(bool visible)
+    private void SetVisible(bool visible, bool sessionActive)
     {
+        isVisible = visible;
         if (canvas != null) canvas.gameObject.SetActive(visible);
-        Cursor.visible = visible;
-        Cursor.lockState = visible ? CursorLockMode.None : CursorLockMode.Locked;
+        if (visible)
+        {
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+        }
+        else if (sessionActive)
+        {
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.Locked;
+        }
     }
 
     private GameObject Panel(string name, Transform parent, Vector2 min, Vector2 max, Color color)
