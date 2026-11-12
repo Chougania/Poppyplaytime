@@ -151,12 +151,14 @@ public class HuggyHunterAI : NetworkBehaviour
         float nearestDistance = visionRange;
 
         DbUnityMovment[] players = FindObjectsOfType<DbUnityMovment>();
+        GameManager gameManager = FindObjectOfType<GameManager>();
         for (int i = 0; i < players.Length; i++)
         {
             DbUnityMovment candidate = players[i];
             if (candidate == null || !candidate.IsSpawned ||
                 candidate.survivorModelContainer == null ||
-                !candidate.survivorModelContainer.activeInHierarchy)
+                !candidate.survivorModelContainer.activeInHierarchy ||
+                (gameManager != null && gameManager.IsClientEliminated(candidate.OwnerClientId)))
                 continue;
 
             float distance = Vector3.Distance(transform.position, candidate.transform.position);
