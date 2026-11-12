@@ -362,6 +362,10 @@ public class GameManager : NetworkBehaviour
 		GrabpackUnlockStation[] stations = FindObjectsOfType<GrabpackUnlockStation>(true);
 		for (int i = 0; i < stations.Length; i++)
 			stations[i].ResetForNewMatch();
+
+		GrabpackPuzzleInteractable[] puzzles = FindObjectsOfType<GrabpackPuzzleInteractable>(true);
+		for (int i = 0; i < puzzles.Length; i++)
+			puzzles[i].ResetForNewMatch();
 	}
 
 	private void EndGame()
