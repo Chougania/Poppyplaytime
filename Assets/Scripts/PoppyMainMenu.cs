@@ -26,6 +26,7 @@ public class PoppyMainMenu : MonoBehaviour
     private TMP_InputField joinCodeInput;
     private TMP_InputField playerNameInput;
     private TextMeshProUGUI modeLabel;
+    private TextMeshProUGUI difficultyLabel;
     private GameObject shopPanel;
     private TextMeshProUGUI shopCreditsLabel;
     private TextMeshProUGUI shopStatusLabel;
@@ -267,10 +268,13 @@ public class PoppyMainMenu : MonoBehaviour
             new Vector2(0.06f, 0.30f), new Vector2(0.31f, 0.07f), JoinSession);
 
         Button modeButton = CreateButton("MODE BUTTON", menuCanvas.transform, GetModeLabel(),
-            new Vector2(0.06f, 0.215f), new Vector2(0.15f, 0.06f), ToggleEnemyMode);
+            new Vector2(0.06f, 0.215f), new Vector2(0.095f, 0.06f), ToggleEnemyMode);
         modeLabel = modeButton != null ? modeButton.GetComponentInChildren<TextMeshProUGUI>() : null;
-        CreateButton("SHOP BUTTON", menuCanvas.transform, "TOY SHOP",
-            new Vector2(0.22f, 0.215f), new Vector2(0.15f, 0.06f), OpenShop);
+        Button difficultyButton = CreateButton("AI DIFFICULTY BUTTON", menuCanvas.transform,
+            GetDifficultyLabel(), new Vector2(0.165f, 0.215f), new Vector2(0.105f, 0.06f), CycleDifficulty);
+        difficultyLabel = difficultyButton != null ? difficultyButton.GetComponentInChildren<TextMeshProUGUI>() : null;
+        CreateButton("SHOP BUTTON", menuCanvas.transform, "SHOP",
+            new Vector2(0.28f, 0.215f), new Vector2(0.09f, 0.06f), OpenShop);
         CreateButton("QUIT BUTTON", menuCanvas.transform, "QUIT",
             new Vector2(0.06f, 0.13f), new Vector2(0.31f, 0.055f), QuitGame);
 
@@ -290,8 +294,8 @@ public class PoppyMainMenu : MonoBehaviour
 
     private void BuildShopPanel()
     {
-        shopPanel = CreatePanel("Shop panel", menuCanvas.transform, new Vector2(0.52f, 0.12f),
-            new Vector2(0.96f, 0.88f), new Color(0.012f, 0.018f, 0.024f, 0.96f));
+        shopPanel = CreatePanel("Shop panel", menuCanvas.transform, new Vector2(0.46f, 0.06f),
+            new Vector2(0.98f, 0.94f), new Color(0.012f, 0.018f, 0.024f, 0.97f));
         shopPanel.SetActive(false);
 
         CreateText("Shop title", shopPanel.transform, "TOY CUSTOMIZATION",
@@ -306,18 +310,35 @@ public class PoppyMainMenu : MonoBehaviour
             14, new Vector2(0.06f, 0.08f), new Vector2(0.88f, 0.07f),
             TextAlignmentOptions.Left, new Color(0.7f, 0.74f, 0.78f));
 
+        CreateText("Player skin heading", shopPanel.transform, "PLAYER COLORS",
+            16, new Vector2(0.04f, 0.68f), new Vector2(0.46f, 0.73f),
+            TextAlignmentOptions.Left, new Color(0.55f, 0.78f, 1f));
+        CreateText("Monster skin heading", shopPanel.transform, "MONSTER SKINS",
+            16, new Vector2(0.52f, 0.68f), new Vector2(0.96f, 0.73f),
+            TextAlignmentOptions.Left, new Color(1f, 0.36f, 0.24f));
+
         for (int i = 0; i < PoppyShop.ColorCount; i++)
         {
             int colorIndex = i;
             int column = i % 2;
             int row = i / 2;
-            Vector2 position = new Vector2(0.06f + column * 0.46f, 0.62f - row * 0.145f);
+            Vector2 position = new Vector2(0.04f + column * 0.22f, 0.58f - row * 0.135f);
             CreateButton("Color " + i, shopPanel.transform, GetShopItemLabel(colorIndex),
-                position, new Vector2(0.42f, 0.105f), () => BuyOrEquipColor(colorIndex));
+                position, new Vector2(0.20f, 0.105f), () => BuyOrEquipColor(colorIndex));
+        }
+
+        for (int i = 0; i < PoppyMonsterShop.SkinCount; i++)
+        {
+            int skinIndex = i;
+            int column = i % 2;
+            int row = i / 2;
+            Vector2 position = new Vector2(0.52f + column * 0.22f, 0.58f - row * 0.18f);
+            CreateButton("MonsterSkin " + i, shopPanel.transform, GetMonsterSkinLabel(skinIndex),
+                position, new Vector2(0.20f, 0.13f), () => BuyOrEquipMonsterSkin(skinIndex));
         }
 
         CreateButton("Close shop", shopPanel.transform, "BACK",
-            new Vector2(0.70f, 0.08f), new Vector2(0.24f, 0.07f), CloseShop);
+            new Vector2(0.72f, 0.08f), new Vector2(0.94f, 0.15f), CloseShop);
         RefreshShop();
     }
 
@@ -349,6 +370,35 @@ public class PoppyMainMenu : MonoBehaviour
             if (label != null)
                 label.text = GetShopItemLabel(i);
         }
+
+        for (int i = 0; i < PoppyMonsterShop.SkinCount; i++)
+        {
+            Transform item = shopPanel.transform.Find("MonsterSkin " + i);
+            if (item == null)
+                continue;
+            TMP_Text label = item.GetComponentInChildren<TMP_Text>();
+            if (label != null)
+                label.text = GetMonsterSkinLabel(i);
+        }
+    }
+
+    private string GetMonsterSkinLabel(int index)
+    {
+        if (PoppyMonsterShop.IsUnlocked(index))
+            return (PoppyMonsterShop.SelectedSkin == index ? "✓ " : "") +
+                PoppyMonsterShop.GetName(index) + "  •  OWNED";
+        return PoppyMonsterShop.GetName(index) + "  •  " + PoppyMonsterShop.GetPrice(index) + " C";
+    }
+
+    private void BuyOrEquipMonsterSkin(int index)
+    {
+        bool success = PoppyMonsterShop.BuyOrSelect(index);
+        if (shopStatusLabel != null)
+            shopStatusLabel.text = success
+                ? "MONSTER EQUIPPED: " + PoppyMonsterShop.GetName(index)
+                : "NOT ENOUGH CREDITS FOR THIS MONSTER SKIN.";
+        RefreshShop();
+        ApplyPreviewSkin();
     }
 
     private void BuyOrEquipColor(int index)
@@ -366,6 +416,8 @@ public class PoppyMainMenu : MonoBehaviour
     {
         if (characterPreview != null)
             PoppyShop.ApplyColor(characterPreview.gameObject, PoppyShop.SelectedColor);
+        if (huggyPreview != null)
+            PoppyMonsterShop.Apply(huggyPreview.gameObject, PoppyMonsterShop.SelectedSkin);
     }
 
     private void OpenShop()
@@ -421,8 +473,24 @@ public class PoppyMainMenu : MonoBehaviour
     private string GetModeLabel()
     {
         return PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 0
-            ? "ENEMY: PLAYER"
-            : "ENEMY: AI";
+            ? "PLAYER"
+            : "AI";
+    }
+
+    private void CycleDifficulty()
+    {
+        int next = (PlayerPrefs.GetInt("Poppy.AIDifficulty", 1) + 1) % 3;
+        PlayerPrefs.SetInt("Poppy.AIDifficulty", next);
+        PlayerPrefs.Save();
+        if (difficultyLabel != null)
+            difficultyLabel.text = GetDifficultyLabel();
+    }
+
+    private string GetDifficultyLabel()
+    {
+        int difficulty = Mathf.Clamp(PlayerPrefs.GetInt("Poppy.AIDifficulty", 1), 0, 2);
+        string[] labels = { "EASY", "NORMAL", "NIGHTMARE" };
+        return labels[difficulty];
     }
 
     private void QuitGame()
