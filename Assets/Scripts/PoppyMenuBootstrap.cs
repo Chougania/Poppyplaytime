@@ -48,50 +48,63 @@ public static class PoppyMenuBootstrap
         }
 
         Transform playerPreview = null;
-        try
+        GameObject previewObject = null;
+        if (NetworkManager.Singleton != null && NetworkManager.Singleton.NetworkConfig.PlayerPrefab != null)
         {
-            GameObject player = GameObject.FindGameObjectWithTag("Player");
-            if (player != null)
-                playerPreview = player.transform;
-        }
-        catch (UnityException)
-        {
-            // The project may not define a Player tag in a custom tag setup.
-        }
+            previewObject = Object.Instantiate(NetworkManager.Singleton.NetworkConfig.PlayerPrefab);
+            previewObject.name = "PoppyMenu_PlayerPreview";
+            previewObject.transform.position = Vector3.zero;
 
-        if (playerPreview == null && NetworkManager.Singleton != null &&
-            NetworkManager.Singleton.NetworkConfig.PlayerPrefab != null)
-        {
-            GameObject preview = Object.Instantiate(NetworkManager.Singleton.NetworkConfig.PlayerPrefab);
-            preview.name = "PoppyMenu_PlayerPreview";
-            NetworkBehaviour[] networkBehaviours = preview.GetComponentsInChildren<NetworkBehaviour>(true);
-            for (int i = 0; i < networkBehaviours.Length; i++)
-                networkBehaviours[i].enabled = false;
+            // A menu preview is a visual-only clone. Disable all gameplay scripts and
+            // non-visual behaviours so it cannot move, shoot the GrabPack or join Netcode.
+            Behaviour[] previewBehaviours = previewObject.GetComponentsInChildren<Behaviour>(true);
+            for (int i = 0; i < previewBehaviours.Length; i++)
+            {
+                if (!(previewBehaviours[i] is Animator))
+                    previewBehaviours[i].enabled = false;
+            }
 
-            Camera[] previewCameras = preview.GetComponentsInChildren<Camera>(true);
+            NetworkObject networkObject = previewObject.GetComponent<NetworkObject>();
+            if (networkObject != null && networkObject.IsSpawned)
+                networkObject.Despawn(true);
+
+            Camera[] previewCameras = previewObject.GetComponentsInChildren<Camera>(true);
             for (int i = 0; i < previewCameras.Length; i++)
                 previewCameras[i].enabled = false;
 
-            AudioListener[] listeners = preview.GetComponentsInChildren<AudioListener>(true);
+            AudioListener[] listeners = previewObject.GetComponentsInChildren<AudioListener>(true);
             for (int i = 0; i < listeners.Length; i++)
                 listeners[i].enabled = false;
 
-            Collider[] colliders = preview.GetComponentsInChildren<Collider>(true);
+            Collider[] colliders = previewObject.GetComponentsInChildren<Collider>(true);
             for (int i = 0; i < colliders.Length; i++)
                 colliders[i].enabled = false;
 
-            CharacterController[] controllers = preview.GetComponentsInChildren<CharacterController>(true);
+            CharacterController[] controllers = previewObject.GetComponentsInChildren<CharacterController>(true);
             for (int i = 0; i < controllers.Length; i++)
                 controllers[i].enabled = false;
 
-            Rigidbody[] bodies = preview.GetComponentsInChildren<Rigidbody>(true);
+            Rigidbody[] bodies = previewObject.GetComponentsInChildren<Rigidbody>(true);
             for (int i = 0; i < bodies.Length; i++)
             {
                 bodies[i].isKinematic = true;
                 bodies[i].useGravity = false;
+                bodies[i].velocity = Vector3.zero;
+                bodies[i].angularVelocity = Vector3.zero;
             }
 
-            playerPreview = preview.transform;
+            Animator[] animators = previewObject.GetComponentsInChildren<Animator>(true);
+            for (int i = 0; i < animators.Length; i++)
+            {
+                animators[i].speed = 0f;
+                animators[i].applyRootMotion = false;
+            }
+
+            playerPreview = previewObject.transform;
+        }
+        else
+        {
+            Debug.LogWarning("PoppyMenuBootstrap: NetworkManager PlayerPrefab is missing; player showroom will be empty.");
         }
 
         Transform huggyPreview = FindHuggyPreview();
