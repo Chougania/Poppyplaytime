@@ -174,7 +174,7 @@ public class DbUnityMovment : NetworkBehaviour
 		}
 		else if (_netIsLockedInAttack.Value || _isLockedInAttack || _isLocalVictimFrozen)
 		{
-			if (_controller.enabled)
+			if (_controller != null && _controller.enabled)
 			{
 				_controller.Move(Vector3.zero);
 			}
@@ -247,7 +247,7 @@ public class DbUnityMovment : NetworkBehaviour
 		if (_controller.enabled && _controller.isGrounded)
 		{
 			_verticalVelocity = -2f;
-			if (Input.GetButtonDown("Jump") && !monsterModelContainer.activeSelf)
+			if (Input.GetButtonDown("Jump") && (monsterModelContainer == null || !monsterModelContainer.activeSelf))
 			{
 				_verticalVelocity = Mathf.Sqrt(jumpHeight * 2f * gravity);
 				JumpServerRpc();
@@ -285,7 +285,7 @@ public class DbUnityMovment : NetworkBehaviour
 
 	private void HandleMonsterAttack()
 	{
-		if (!(monsterModelContainer == null) && monsterModelContainer.activeSelf && Input.GetMouseButtonDown(0) && !_isLockedInAttack && !_netIsLockedInAttack.Value)
+		if (IsServer && monsterModelContainer != null && monsterModelContainer.activeSelf && Input.GetMouseButtonDown(0) && !_isLockedInAttack && !_netIsLockedInAttack.Value)
 		{
 			RequestAttackVisualServerRpc();
 			StartCoroutine(ActivateAttackCubeRoutine());
@@ -348,10 +348,31 @@ public class DbUnityMovment : NetworkBehaviour
 	[ServerRpc]
 	private void RequestKillTargetServerRpc(ulong victimClientId, ulong victimNetObjectId)
 	{
-		if (!_isLockedInAttack && !_netIsLockedInAttack.Value)
-		{
-			StartCoroutine(ServerKillSequence(victimClientId, victimNetObjectId));
-		}
+		if (!IsServer || NetworkManager.Singleton == null ||
+			monsterModelContainer == null || !monsterModelContainer.activeSelf ||
+			_isLockedInAttack || _netIsLockedInAttack.Value)
+			return;
+
+		if (!NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(victimNetObjectId, out NetworkObject victimObject) ||
+			victimObject == null || victimObject.OwnerClientId != victimClientId ||
+			victimClientId == OwnerClientId)
+			return;
+
+		DbUnityMovment victimMovement = victimObject.GetComponent<DbUnityMovment>();
+		if (victimMovement == null || victimMovement.survivorModelContainer == null ||
+			!victimMovement.survivorModelContainer.activeSelf)
+			return;
+
+		float allowedDistance = Mathf.Max(0.5f, killDistance);
+		if ((victimObject.transform.position - transform.position).sqrMagnitude > allowedDistance * allowedDistance)
+			return;
+
+		if (attackCubeCollider != null && !attackCubeCollider.bounds.Intersects(victimObject.GetComponent<Collider>() != null
+			? victimObject.GetComponent<Collider>().bounds
+			: new Bounds(victimObject.transform.position, Vector3.one)))
+			return;
+
+		StartCoroutine(ServerKillSequence(victimClientId, victimNetObjectId));
 	}
 
 	private IEnumerator ServerKillSequence(ulong victimId, ulong victimNetObjectId)
@@ -372,7 +393,8 @@ public class DbUnityMovment : NetworkBehaviour
 	[ClientRpc]
 	private void TriggerJumpscareClientRpc(ulong victimId, ulong victimNetObjectId)
 	{
-		if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(victimNetObjectId, out var value))
+		if (NetworkManager.Singleton != null && NetworkManager.Singleton.SpawnManager != null &&
+			NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(victimNetObjectId, out var value))
 		{
 			DbUnityMovment component = value.GetComponent<DbUnityMovment>();
 			if (component != null)
@@ -393,7 +415,7 @@ public class DbUnityMovment : NetworkBehaviour
 				component.StartCoroutine(component.LocalVictimFreezeAndTeleportGuardRoutine());
 			}
 		}
-		if (NetworkManager.Singleton.LocalClientId == victimId && Camera.main != null)
+		if (NetworkManager.Singleton != null && NetworkManager.Singleton.LocalClientId == victimId && Camera.main != null)
 		{
 			Camera.main.transform.LookAt(transform.position + Vector3.up * 1.5f);
 		}
