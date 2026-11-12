@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Unity.Netcode;
 
 /// <summary>
 /// Automatically installs the runtime menu on the Lobby scene so no manual scene YAML
@@ -53,6 +54,41 @@ public static class PoppyMenuBootstrap
         catch (UnityException)
         {
             // The project may not define a Player tag in a custom tag setup.
+        }
+
+        if (playerPreview == null && NetworkManager.Singleton != null &&
+            NetworkManager.Singleton.NetworkConfig.PlayerPrefab != null)
+        {
+            GameObject preview = Object.Instantiate(NetworkManager.Singleton.NetworkConfig.PlayerPrefab);
+            preview.name = "PoppyMenu_PlayerPreview";
+            NetworkBehaviour[] networkBehaviours = preview.GetComponentsInChildren<NetworkBehaviour>(true);
+            for (int i = 0; i < networkBehaviours.Length; i++)
+                networkBehaviours[i].enabled = false;
+
+            Camera[] previewCameras = preview.GetComponentsInChildren<Camera>(true);
+            for (int i = 0; i < previewCameras.Length; i++)
+                previewCameras[i].enabled = false;
+
+            AudioListener[] listeners = preview.GetComponentsInChildren<AudioListener>(true);
+            for (int i = 0; i < listeners.Length; i++)
+                listeners[i].enabled = false;
+
+            Collider[] colliders = preview.GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < colliders.Length; i++)
+                colliders[i].enabled = false;
+
+            CharacterController[] controllers = preview.GetComponentsInChildren<CharacterController>(true);
+            for (int i = 0; i < controllers.Length; i++)
+                controllers[i].enabled = false;
+
+            Rigidbody[] bodies = preview.GetComponentsInChildren<Rigidbody>(true);
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                bodies[i].isKinematic = true;
+                bodies[i].useGravity = false;
+            }
+
+            playerPreview = preview.transform;
         }
 
         Transform huggyPreview = FindHuggyPreview();
