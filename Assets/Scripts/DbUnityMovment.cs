@@ -369,6 +369,10 @@ public class DbUnityMovment : NetworkBehaviour
 
 		if (attackCubeCollider != null)
 		{
+			Vector3 attackCenter = attackCubeCollider.transform.TransformPoint(attackCubeCollider.center);
+			Vector3 attackSize = Vector3.Scale(attackCubeCollider.size, attackCubeCollider.transform.lossyScale);
+			Bounds attackBounds = new Bounds(attackCenter, attackSize);
+
 			Collider[] victimColliders = victimObject.GetComponentsInChildren<Collider>();
 			bool hasUsableCollider = false;
 			bool intersectsAttack = false;
@@ -380,7 +384,7 @@ public class DbUnityMovment : NetworkBehaviour
 					continue;
 
 				hasUsableCollider = true;
-				if (attackCubeCollider.bounds.Intersects(victimCollider.bounds))
+				if (attackBounds.Intersects(victimCollider.bounds))
 				{
 					intersectsAttack = true;
 					break;
