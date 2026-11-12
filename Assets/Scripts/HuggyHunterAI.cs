@@ -50,6 +50,8 @@ public class HuggyHunterAI : NetworkBehaviour
     private float patrolWaitTimer;
     private bool attackInProgress;
     private bool hasAlerted;
+    // RaycastNonAlloc avoids a new array allocation every vision check.
+    private readonly RaycastHit[] visionHits = new RaycastHit[32];
 
     private HunterState State
     {
@@ -169,8 +171,9 @@ public class HuggyHunterAI : NetworkBehaviour
         }
         else if (target != null && State == HunterState.Chase)
         {
+            // Keep the position from the last successful sighting. Updating it
+            // here would let Huggy track a player perfectly through walls.
             lostSightTimer += targetRefreshRate;
-            lastKnownPosition = target.transform.position;
 
             if (lostSightTimer >= loseTargetAfter)
             {
@@ -193,24 +196,25 @@ public class HuggyHunterAI : NetworkBehaviour
         if (distance > visionRange || Vector3.Angle(transform.forward, direction) > visionAngle * 0.5f)
             return false;
 
-        RaycastHit[] hits = Physics.RaycastAll(origin, direction.normalized, distance,
+        int hitCount = Physics.RaycastNonAlloc(origin, direction.normalized, visionHits, distance,
             obstructionMask, QueryTriggerInteraction.Ignore);
 
+        // RaycastNonAlloc does not guarantee hit ordering: inspect every hit and
+        // decide visibility from the closest collider that is not part of Huggy.
         float nearestDistance = float.MaxValue;
         DbUnityMovment firstVisiblePlayer = null;
-        for (int i = 0; i < hits.Length; i++)
+        for (int i = 0; i < hitCount; i++)
         {
-            Transform hitTransform = hits[i].collider != null ? hits[i].collider.transform : null;
+            Collider hitCollider = visionHits[i].collider;
+            Transform hitTransform = hitCollider != null ? hitCollider.transform : null;
             if (hitTransform == null || hitTransform == transform || hitTransform.IsChildOf(transform))
                 continue;
 
-            if (hits[i].distance >= nearestDistance)
+            if (visionHits[i].distance >= nearestDistance)
                 continue;
 
-            nearestDistance = hits[i].distance;
-            firstVisiblePlayer = hits[i].collider.GetComponentInParent<DbUnityMovment>();
-            if (firstVisiblePlayer == null)
-                return false;
+            nearestDistance = visionHits[i].distance;
+            firstVisiblePlayer = hitCollider.GetComponentInParent<DbUnityMovment>();
         }
 
         return nearestDistance == float.MaxValue || firstVisiblePlayer == candidate;
@@ -362,5 +366,20 @@ public class HuggyHunterAI : NetworkBehaviour
         animator.SetFloat("Speed", networkSpeed.Value);
         animator.SetBool("IsMoving", networkSpeed.Value > 0.12f);
         animator.SetBool("IsChasing", networkState.Value == (byte)HunterState.Chase);
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        Gizmos.color = new Color(1f, 0.12f, 0.08f, 0.8f);
+        Gizmos.DrawWireSphere(transform.position, visionRange);
+
+        Gizmos.color = new Color(1f, 0.65f, 0.1f, 0.8f);
+        Gizmos.DrawWireSphere(transform.position, attackDistance);
+
+        Vector3 left = Quaternion.Euler(0f, -visionAngle * 0.5f, 0f) * transform.forward;
+        Vector3 right = Quaternion.Euler(0f, visionAngle * 0.5f, 0f) * transform.forward;
+        Gizmos.color = new Color(1f, 0.12f, 0.08f, 0.45f);
+        Gizmos.DrawLine(transform.position, transform.position + left * visionRange);
+        Gizmos.DrawLine(transform.position, transform.position + right * visionRange);
     }
 }
