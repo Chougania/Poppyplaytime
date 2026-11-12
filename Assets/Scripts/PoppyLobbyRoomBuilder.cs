@@ -83,6 +83,11 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
         Block("Power conduit A", new Vector3(-2f, 2.6f, 8f), new Vector3(7f, 0.18f, 0.18f), warning);
         Block("Power conduit B", new Vector3(1.4f, 2.6f, 8f), new Vector3(0.18f, 0.18f, 7f), warning);
 
+        // Display stand for the two GrabPack hand variants.
+        Block("GrabPack showcase pedestal", new Vector3(0f, 0.65f, 12f), new Vector3(5.5f, 1.3f, 1.5f), darkMetal);
+        DisplayHand("Blue GrabPack hand", new Vector3(-1.25f, 1.65f, 12f), emissiveBlue);
+        DisplayHand("Red GrabPack hand", new Vector3(1.25f, 1.65f, 12f), emissiveRed);
+
         // Decorative doors, wall braces, ceiling strips.
         for (int i = 0; i < 5; i++)
         {
@@ -124,6 +129,43 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
             yield return new WaitForSecondsRealtime(0.06f);
             if (light != null) light.enabled = true;
         }
+    }
+
+    private void DisplayHand(string handName, Vector3 position, Material material)
+    {
+        GameObject palm = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        palm.name = handName + " palm";
+        palm.transform.SetParent(root, false);
+        palm.transform.localPosition = position;
+        palm.transform.localScale = new Vector3(0.8f, 0.9f, 0.42f);
+        palm.GetComponent<Renderer>().sharedMaterial = material;
+
+        for (int i = 0; i < 4; i++)
+        {
+            GameObject finger = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            finger.name = handName + " finger " + i;
+            finger.transform.SetParent(root, false);
+            finger.transform.localPosition = position + new Vector3(-0.27f + i * 0.18f, 0.52f, 0f);
+            finger.transform.localScale = new Vector3(0.14f, 0.3f, 0.14f);
+            finger.GetComponent<Renderer>().sharedMaterial = material;
+        }
+
+        GameObject thumb = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        thumb.name = handName + " thumb";
+        thumb.transform.SetParent(root, false);
+        thumb.transform.localPosition = position + new Vector3(-0.48f, -0.05f, 0f);
+        thumb.transform.localRotation = Quaternion.Euler(0f, 0f, -38f);
+        thumb.transform.localScale = new Vector3(0.16f, 0.28f, 0.16f);
+        thumb.GetComponent<Renderer>().sharedMaterial = material;
+
+        GameObject cable = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        cable.name = handName + " cable";
+        cable.transform.SetParent(root, false);
+        Vector3 cableStart = position + new Vector3(0f, -0.35f, 0f);
+        Vector3 cableEnd = position + new Vector3(0f, -1.15f, 0f);
+        cable.transform.localPosition = (cableStart + cableEnd) * 0.5f;
+        cable.transform.localScale = new Vector3(0.055f, 0.42f, 0.055f);
+        cable.GetComponent<Renderer>().sharedMaterial = darkMetal;
     }
 
     private void Block(string name, Vector3 localPosition, Vector3 scale, Material material)
