@@ -233,7 +233,7 @@ public class ConnectionManafer : MonoBehaviour
 			Debug.LogWarning("[Netcode] A network session is already active. Leave it before joining another room.");
 			return;
 		}
-		if (string.IsNullOrEmpty(rawLiveCode) && codeInputField != null)
+		if (codeInputField != null)
 		{
 			rawLiveCode = codeInputField.text.Replace("\u200b", "").Replace("\n", "").Replace("\r", "")
 				.ToUpper()
