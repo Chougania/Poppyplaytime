@@ -19,6 +19,7 @@ public class PoppyLobbyUI : MonoBehaviour
     private RectTransform rosterRoot;
     private TextMeshProUGUI statusText;
     private TextMeshProUGUI modeText;
+    private TextMeshProUGUI walletText;
     private Button readyButton;
     private Button startButton;
     private bool localReady;
@@ -72,6 +73,8 @@ public class PoppyLobbyUI : MonoBehaviour
         modeText.text = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1
             ? "MODE : HUGGY IA  •  " + DifficultyName()
             : "MODE : MONSTRE JOUEUR";
+        if (walletText != null)
+            walletText.text = "CREDITS  " + PoppyShop.Credits + "     ★ TICKETS  " + PoppyShop.Tickets;
 
         if (readyButton != null) readyButton.interactable = !inMatch;
         if (startButton != null)
@@ -101,7 +104,7 @@ public class PoppyLobbyUI : MonoBehaviour
         GameObject panel = Panel("Lobby glass panel", root.transform, new Vector2(0.62f, 0.12f), new Vector2(0.97f, 0.88f),
             new Color(0.018f, 0.025f, 0.035f, 0.96f));
         Label("LOBBY", panel.transform, new Vector2(0.07f, 0.83f), new Vector2(0.93f, 0.96f), 38, Color.white);
-        Label("CREDITS  " + PoppyShop.Credits + "     ★ TICKETS  " + PoppyShop.Tickets,
+        walletText = Label("CREDITS  " + PoppyShop.Credits + "     ★ TICKETS  " + PoppyShop.Tickets,
             panel.transform, new Vector2(0.07f, 0.76f), new Vector2(0.93f, 0.82f), 15, new Color(1f, 0.78f, 0.24f));
         statusText = Label("EN ATTENTE DES JOUEURS", panel.transform, new Vector2(0.07f, 0.69f), new Vector2(0.93f, 0.75f), 17, new Color(1f, 0.35f, 0.2f));
         modeText = Label("", panel.transform, new Vector2(0.07f, 0.62f), new Vector2(0.93f, 0.68f), 15, new Color(0.65f, 0.8f, 1f));
