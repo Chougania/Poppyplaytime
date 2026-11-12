@@ -185,6 +185,11 @@ public class DbUnityMovment : NetworkBehaviour
 		ApplySkinColor(current);
 	}
 
+	public void RefreshSkinColor()
+	{
+		ApplySkinColor(_skinColorIndex.Value);
+	}
+
 	private void ApplySkinColor(int colorIndex)
 	{
 		if (survivorModelContainer != null)
