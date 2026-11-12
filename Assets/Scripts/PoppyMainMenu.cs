@@ -56,6 +56,7 @@ public class PoppyMainMenu : MonoBehaviour
             BuildCreepyCorridor();
 
         BuildInterface();
+        PoppyUIInputGate.Clear();
         PoppyUIInputGate.SetMenuOpen(true);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
