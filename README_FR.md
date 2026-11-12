@@ -69,7 +69,7 @@ En mode AI, GameManager fait apparaître `aiMonsterPrefab` et tous les joueurs h
 3. Lancez `Tools > Poppy Playtime > Create AI Network Prefab From Selected Huggy`.
 4. Le wizard crée `Assets/Prefabs/Huggy AI Network.prefab` et renseigne `GameManager.aiMonsterPrefab` si un GameManager est présent dans la scène.
 5. Sur le GameObject `NetworkManager`, ajoutez le prefab à `NetworkConfig > Network Prefabs`.
-6. Sur la carte jouable, ajoutez/configurez un NavMeshSurface (package AI Navigation si nécessaire), marquez le sol comme navigable puis faites **Bake**.
+6. Sur la carte jouable, ajoutez/configurez un NavMeshSurface (le package AI Navigation 1.1.5 est ajouté au manifest), marquez le sol comme navigable puis faites **Bake**.
 7. Vérifiez que `monsterSpawnPoint` se trouve sur le NavMesh. Le prefab utilise `NetworkObject`, `NetworkTransform`, `NavMeshAgent` et `HuggyHunterAI`.
 
 L'IA patrouille, détecte les survivants dans son champ de vision, poursuit leur dernière position connue, recherche puis déclenche une attaque à courte portée. Le serveur est responsable de son déplacement et de la validation de l'élimination.
