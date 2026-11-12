@@ -73,7 +73,11 @@ public class PoppyMainMenu : MonoBehaviour
             isShopOpen = false;
             PoppyUIInputGate.SetShopOpen(false);
             if (menuCanvas != null && menuCanvas.gameObject.activeSelf)
+            {
                 menuCanvas.gameObject.SetActive(false);
+                Cursor.lockState = CursorLockMode.Locked;
+                Cursor.visible = false;
+            }
             PoppyUIInputGate.SetMenuOpen(false);
             if (corridorRoot != null) corridorRoot.gameObject.SetActive(false);
             if (characterPreview != null && characterPreview.name == "PoppyMenu_PlayerPreview")
@@ -85,8 +89,6 @@ public class PoppyMainMenu : MonoBehaviour
                 AudioListener listener = menuCamera.GetComponent<AudioListener>();
                 if (listener != null) listener.enabled = false;
             }
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
         }
         else if (wasConnectedToSession)
         {
