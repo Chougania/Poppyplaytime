@@ -1,0 +1,53 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!78 &1
+TagManager:
+  serializedVersion: 3
+  tags:
+  - Grab-able
+  - CableSegment
+  - Concrete
+  - Grass
+  - Wood
+  - Metal
+  - critter
+  - AI
+  layers:
+  - Default
+  - TransparentFX
+  - Ignore Raycast
+  - Physics
+  - Water
+  - UI
+  - Wall
+  - Player
+  - Jumppad
+  - Battery
+  - Grabanimation
+  - Minecart
+  - Tracks
+  - KeyCard
+  - Button
+  - CodeChecker
+  - GrabPack
+  - PostProcessing
+  - grabpackpickup
+  - HandPickup
+  - points
+  - monster
+  - EMUpickup
+  - NoDelete
+  - keycard
+  - flare
+  - critter
+  - CantClimb
+  - HiddenUV
+  - GlowbyPickup
+  - CritterWall
+  - 
+  m_SortingLayers:
+  - name: Default
+    uniqueID: 0
+    locked: 0
+  m_RenderingLayers:
+  - Default
