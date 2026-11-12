@@ -285,7 +285,7 @@ public class DbUnityMovment : NetworkBehaviour
 
 	private void HandleMonsterAttack()
 	{
-		if (IsServer && monsterModelContainer != null && monsterModelContainer.activeSelf && Input.GetMouseButtonDown(0) && !_isLockedInAttack && !_netIsLockedInAttack.Value)
+		if (monsterModelContainer != null && monsterModelContainer.activeSelf && Input.GetMouseButtonDown(0) && !_isLockedInAttack && !_netIsLockedInAttack.Value)
 		{
 			RequestAttackVisualServerRpc();
 			StartCoroutine(ActivateAttackCubeRoutine());
@@ -367,10 +367,29 @@ public class DbUnityMovment : NetworkBehaviour
 		if ((victimObject.transform.position - transform.position).sqrMagnitude > allowedDistance * allowedDistance)
 			return;
 
-		if (attackCubeCollider != null && !attackCubeCollider.bounds.Intersects(victimObject.GetComponent<Collider>() != null
-			? victimObject.GetComponent<Collider>().bounds
-			: new Bounds(victimObject.transform.position, Vector3.one)))
-			return;
+		if (attackCubeCollider != null)
+		{
+			Collider[] victimColliders = victimObject.GetComponentsInChildren<Collider>();
+			bool hasUsableCollider = false;
+			bool intersectsAttack = false;
+
+			for (int i = 0; i < victimColliders.Length; i++)
+			{
+				Collider victimCollider = victimColliders[i];
+				if (victimCollider == null || !victimCollider.enabled || victimCollider.isTrigger)
+					continue;
+
+				hasUsableCollider = true;
+				if (attackCubeCollider.bounds.Intersects(victimCollider.bounds))
+				{
+					intersectsAttack = true;
+					break;
+				}
+			}
+
+			if (hasUsableCollider && !intersectsAttack)
+				return;
+		}
 
 		StartCoroutine(ServerKillSequence(victimClientId, victimNetObjectId));
 	}
