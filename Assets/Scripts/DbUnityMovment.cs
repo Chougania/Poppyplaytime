@@ -81,6 +81,8 @@ public class DbUnityMovment : NetworkBehaviour
 
 	private NetworkVariable<bool> _netIsLockedInAttack = new NetworkVariable<bool>(value: false);
 
+	private NetworkVariable<int> _skinColorIndex = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
 	private void Awake()
 	{
 		_controller = GetComponent<CharacterController>();
@@ -89,6 +91,10 @@ public class DbUnityMovment : NetworkBehaviour
 
 	public override void OnNetworkSpawn()
 	{
+		_skinColorIndex.OnValueChanged += OnSkinColorChanged;
+		ApplySkinColor(_skinColorIndex.Value);
+		if (IsOwner)
+			RequestSkinColorServerRpc(PoppyShop.SelectedColor);
 		if (monsterModelContainer != null && monsterModelContainer.activeSelf)
 		{
 			_animator = monsterModelContainer.GetComponent<Animator>() ?? monsterModelContainer.GetComponentInChildren<Animator>();
@@ -159,6 +165,32 @@ public class DbUnityMovment : NetworkBehaviour
 		{
 			deadModelContainer.SetActive(value: false);
 		}
+	}
+
+
+	public override void OnNetworkDespawn()
+	{
+		_skinColorIndex.OnValueChanged -= OnSkinColorChanged;
+	}
+
+	[ServerRpc]
+	private void RequestSkinColorServerRpc(int colorIndex)
+	{
+		if (colorIndex >= 0 && colorIndex < PoppyShop.ColorCount)
+			_skinColorIndex.Value = colorIndex;
+	}
+
+	private void OnSkinColorChanged(int previous, int current)
+	{
+		ApplySkinColor(current);
+	}
+
+	private void ApplySkinColor(int colorIndex)
+	{
+		if (survivorModelContainer != null)
+			PoppyShop.ApplyColor(survivorModelContainer, colorIndex);
+		if (monsterModelContainer != null)
+			PoppyShop.ApplyColor(monsterModelContainer, colorIndex);
 	}
 
 	private void Update()
