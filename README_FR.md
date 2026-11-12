@@ -39,3 +39,40 @@ Les systèmes à évaluer et intégrer progressivement sont notamment le câble 
 ## Vérification
 
 Les modifications de cette branche ont été relues statiquement à partir des fichiers source. **La compilation Unity, les scènes en Play Mode et les tests multijoueurs ne sont pas encore validés** : ils doivent être exécutés dans Unity 2022.3.62f3 avec au moins deux clients.
+
+
+## Nouvelle expérience : menu, boutique et ennemi IA
+
+### Menu creepy
+Le script `PoppyMenuBootstrap` installe automatiquement le menu dans la scène nommée `Lobby`.
+Il construit un couloir sombre à l'exécution, avec des néons qui clignotent, une interface sombre, les commandes Host/Join, un accès à la boutique et un aperçu Huggy si le modèle de la scène est trouvé.
+Le menu masque les anciens canvases de connexion et se ferme dès que le NetworkManager démarre une session.
+
+**Références de scène :** le bootstrap recherche `ConnectionManafer`, la caméra active, un objet tagué `Player` et le modèle dont le nom est `Poppy_Playtime__Box_-_Huggy_Wuggy`. Si le personnage ou Huggy n'apparaît pas dans l'aperçu, assignez ces références dans le composant `PoppyMainMenu` après avoir créé un objet qui porte ce composant.
+
+### Boutique de couleurs
+- 8 couleurs de GrabPack/personnage.
+- Couleurs gratuites et couleurs déblocables avec des crédits.
+- Sauvegarde locale des crédits, achats et couleur équipée via PlayerPrefs.
+- Le choix de couleur est envoyé au serveur au spawn du joueur puis répliqué aux autres joueurs.
+- Une manche terminée donne 100 crédits à chaque client connecté.
+
+Les crédits sont actuellement une économie locale de prototype, pas un portefeuille anti-triche lié au compte. Pour une économie compétitive, il faudra stocker les achats et soldes côté serveur (Cloud Save / service backend) et valider les transactions à distance.
+
+### Mode ennemi IA
+Le bouton `ENEMY: PLAYER / ENEMY: AI` mémorise le choix sur la machine de l'hôte.
+En mode AI, GameManager fait apparaître `aiMonsterPrefab` et tous les joueurs humains deviennent des survivants. Si aucun prefab AI n'est assigné, le jeu revient au mode monstre-joueur.
+
+**Créer le prefab Huggy :**
+1. Ouvrez la scène `Lobby` dans Unity 2022.3.62f3.
+2. Sélectionnez le GameObject racine du modèle Huggy dans la Hierarchy.
+3. Lancez `Tools > Poppy Playtime > Create AI Network Prefab From Selected Huggy`.
+4. Le wizard crée `Assets/Prefabs/Huggy AI Network.prefab` et renseigne `GameManager.aiMonsterPrefab` si un GameManager est présent dans la scène.
+5. Sur le GameObject `NetworkManager`, ajoutez le prefab à `NetworkConfig > Network Prefabs`.
+6. Sur la carte jouable, ajoutez/configurez un NavMeshSurface (package AI Navigation si nécessaire), marquez le sol comme navigable puis faites **Bake**.
+7. Vérifiez que `monsterSpawnPoint` se trouve sur le NavMesh. Le prefab utilise `NetworkObject`, `NetworkTransform`, `NavMeshAgent` et `HuggyHunterAI`.
+
+L'IA patrouille, détecte les survivants dans son champ de vision, poursuit leur dernière position connue, recherche puis déclenche une attaque à courte portée. Le serveur est responsable de son déplacement et de la validation de l'élimination.
+
+### Validation obligatoire
+Ces fonctions ont été ajoutées au code source, mais elles n'ont pas encore été ouvertes, compilées ou testées dans Unity dans cet environnement. Il faut notamment vérifier la génération du prefab, l'enregistrement Network Prefabs, le bake NavMesh, le rendu du menu et les achats/synchronisations en Host + Client.
