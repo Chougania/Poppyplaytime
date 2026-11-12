@@ -174,7 +174,8 @@ Branche : `upgrade/full-ui-lobby-rework`
 ### Monnaies
 - Credits : monnaie courante persistante.
 - Tickets : monnaie rare persistante, initialisée à 0.
-- Une manche terminée accorde 100 Credits et 1 Ticket.
+- Une manche terminée normalement accorde 100 Credits et 1 Ticket.
+- Un retour manuel au lobby termine la manche partagée sans accorder de récompense (anti-farm).
 - Les skins de monstre « SHADOW HUGGY » et « MOLTEN PROTOTYPE » coûtent respectivement 1 et 2 Tickets ; les autres articles utilisent les Credits.
 - Ces soldes restent stockés localement via PlayerPrefs dans ce prototype.
 
