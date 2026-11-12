@@ -74,5 +74,12 @@ En mode AI, GameManager fait apparaître `aiMonsterPrefab` et tous les joueurs h
 
 L'IA patrouille, détecte les survivants dans son champ de vision, poursuit leur dernière position connue, recherche puis déclenche une attaque à courte portée. Le serveur est responsable de son déplacement et de la validation de l'élimination.
 
+### Correctifs complémentaires (revue statique)
+- La détection visuelle de Huggy examine désormais les collisions sans supposer que les Raycast sont triés, et réutilise un tampon de résultats pour limiter les allocations répétées.
+- Lorsqu'un survivant disparaît de la vue, Huggy conserve sa dernière position réellement observée au lieu de lire sa position à travers les murs.
+- Les Gizmos de Huggy affichent la portée de vision, l'angle de détection et la distance d'attaque lorsque le prefab est sélectionné.
+- Correction d'une incompatibilité de type dans le bouton de sélection du mode (le bouton fournit maintenant son composant TMP enfant).
+- Ajout d'un shader de secours pour le décor du menu si le shader Standard / URP n'est pas disponible.
+
 ### Validation obligatoire
 Ces fonctions ont été ajoutées au code source, mais elles n'ont pas encore été ouvertes, compilées ou testées dans Unity dans cet environnement. Il faut notamment vérifier la génération du prefab, l'enregistrement Network Prefabs, le bake NavMesh, le rendu du menu et les achats/synchronisations en Host + Client.
