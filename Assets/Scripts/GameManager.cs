@@ -29,9 +29,16 @@ public class GameManager : NetworkBehaviour
 	[Header("Game Settings")]
 	public int gameDurationSeconds = 180;
 
-	private NetworkVariable<int> _netTimer = new NetworkVariable<int>(180);
+	private NetworkVariable<int> _netTimer = new NetworkVariable<int>(180, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
 	private bool _gameStarted;
+
+	private void OnValidate()
+	{
+		gameDurationSeconds = Mathf.Max(1, gameDurationSeconds);
+		if (networkedObjects == null)
+			networkedObjects = new List<NetworkObject>();
+	}
 
 	private void Start()
 	{
@@ -51,21 +58,20 @@ public class GameManager : NetworkBehaviour
 
 	public override void OnNetworkSpawn()
 	{
-		NetworkVariable<int> netTimer = _netTimer;
-		netTimer.OnValueChanged = (NetworkVariable<int>.OnValueChangedDelegate)Delegate.Combine(netTimer.OnValueChanged, new NetworkVariable<int>.OnValueChangedDelegate(UpdateTimerUI));
+		_netTimer.OnValueChanged += UpdateTimerUI;
 		UpdateTimerUI(0, _netTimer.Value);
-		if (IsServer)
-		{
-			_netTimer.Value = gameDurationSeconds;
-			NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
-			SpawnAndSyncNetworkedObjects();
-		}
+
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+
+		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
+		NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
+		SpawnAndSyncNetworkedObjects();
 	}
 
 	public override void OnNetworkDespawn()
 	{
-		NetworkVariable<int> netTimer = _netTimer;
-		netTimer.OnValueChanged = (NetworkVariable<int>.OnValueChangedDelegate)Delegate.Remove(netTimer.OnValueChanged, new NetworkVariable<int>.OnValueChangedDelegate(UpdateTimerUI));
+		_netTimer.OnValueChanged -= UpdateTimerUI;
 		if (IsServer && NetworkManager.Singleton != null)
 		{
 			NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
@@ -74,10 +80,9 @@ public class GameManager : NetworkBehaviour
 
 	private void Update()
 	{
-		if (!IsServer || _gameStarted)
-		{
+		if (!IsServer || _gameStarted || NetworkManager.Singleton == null)
 			return;
-		}
+
 		if (NetworkManager.Singleton.ConnectedClientsList.Count >= 2)
 		{
 			if (hostStartPromptUI != null && !hostStartPromptUI.activeSelf)
@@ -101,7 +106,7 @@ public class GameManager : NetworkBehaviour
 
 	private void OnClientConnected(ulong clientId)
 	{
-		if (IsServer)
+		if (IsServer && NetworkManager.Singleton != null)
 		{
 			SpawnAndSyncNetworkedObjects();
 			if (lobbySpawnPoint != null)
@@ -113,10 +118,9 @@ public class GameManager : NetworkBehaviour
 
 	private void SpawnAndSyncNetworkedObjects()
 	{
-		if (!IsServer)
-		{
+		if (!IsServer || networkedObjects == null)
 			return;
-		}
+
 		foreach (NetworkObject networkedObject in networkedObjects)
 		{
 			if (networkedObject != null && !networkedObject.IsSpawned)
@@ -128,24 +132,28 @@ public class GameManager : NetworkBehaviour
 
 	private IEnumerator StartGameLoop()
 	{
+		if (!IsServer || _gameStarted || NetworkManager.Singleton == null)
+			yield break;
+
 		_gameStarted = true;
+		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		SetRoleNotificationClientRpc("Assigning Roles...");
-		yield return new WaitForSeconds(3f);
+		yield return new WaitForSecondsRealtime(3f);
 		AssignRolesAndSpawn();
-		while (_netTimer.Value > 0)
+
+		while (IsServer && _netTimer.Value > 0)
 		{
-			yield return new WaitForSeconds(1f);
-			_netTimer.Value--;
+			yield return new WaitForSecondsRealtime(1f);
+			_netTimer.Value = Mathf.Max(0, _netTimer.Value - 1);
 		}
 		EndGame();
 	}
 
 	private void AssignRolesAndSpawn()
 	{
-		if (!IsServer)
-		{
+		if (!IsServer || NetworkManager.Singleton == null)
 			return;
-		}
+
 		IReadOnlyList<NetworkClient> connectedClientsList = NetworkManager.Singleton.ConnectedClientsList;
 		if (connectedClientsList.Count == 0)
 		{
@@ -177,7 +185,9 @@ public class GameManager : NetworkBehaviour
 
 	public void ExecuteTargetedTeleport(ulong clientId, Vector3 targetPosition, bool isMonster, bool isSurvivor)
 	{
-		if (IsServer && NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var value) && value.PlayerObject != null)
+		if (IsServer && NetworkManager.Singleton != null &&
+			NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var value) &&
+			value.PlayerObject != null)
 		{
 			ulong networkObjectId = value.PlayerObject.NetworkObjectId;
 			TeleportClientTargetClientRpc(targetPosition, isMonster, isSurvivor, networkObjectId, clientId);
@@ -187,7 +197,9 @@ public class GameManager : NetworkBehaviour
 	[ClientRpc]
 	private void TeleportClientTargetClientRpc(Vector3 targetPosition, bool isMonster, bool isSurvivor, ulong targetNetObjectId, ulong targetOwnerId)
 	{
-		if (!NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetNetObjectId, out var value) || value.OwnerClientId != targetOwnerId)
+		if (NetworkManager.Singleton == null ||
+			!NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetNetObjectId, out var value) ||
+			value.OwnerClientId != targetOwnerId)
 		{
 			return;
 		}
@@ -285,12 +297,11 @@ public class GameManager : NetworkBehaviour
 
 	private void EndGame()
 	{
-		if (!IsServer)
-		{
+		if (!IsServer || NetworkManager.Singleton == null)
 			return;
-		}
+
 		_gameStarted = false;
-		_netTimer.Value = gameDurationSeconds;
+		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		foreach (NetworkClient connectedClients in NetworkManager.Singleton.ConnectedClientsList)
 		{
 			if (connectedClients.PlayerObject != null && lobbySpawnPoint != null)
