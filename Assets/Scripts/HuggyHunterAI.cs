@@ -41,7 +41,14 @@ public class HuggyHunterAI : NetworkBehaviour
     private readonly NetworkVariable<float> networkSpeed =
         new NetworkVariable<float>(0f,
             NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+    private readonly NetworkVariable<int> networkMonsterSkin =
+        new NetworkVariable<int>(0,
+            NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
+    private float baseVisionRange;
+    private float baseChaseSpeed;
+    private float baseAttackCooldown;
+    private float baseLoseTargetAfter;
     private DbUnityMovment target;
     private Vector3 lastKnownPosition;
     private float targetRefreshTimer;
@@ -62,6 +69,10 @@ public class HuggyHunterAI : NetworkBehaviour
     private void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
+        baseVisionRange = visionRange;
+        baseChaseSpeed = chaseSpeed;
+        baseAttackCooldown = attackCooldown;
+        baseLoseTargetAfter = loseTargetAfter;
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
         if (audioSource == null)
@@ -71,9 +82,11 @@ public class HuggyHunterAI : NetworkBehaviour
     public override void OnNetworkSpawn()
     {
         networkState.OnValueChanged += OnStateChanged;
+        networkMonsterSkin.OnValueChanged += OnMonsterSkinChanged;
 
         if (!IsServer)
         {
+            ApplyMonsterSkin(networkMonsterSkin.Value);
             if (agent != null)
                 agent.enabled = false;
             return;
@@ -86,6 +99,9 @@ public class HuggyHunterAI : NetworkBehaviour
             return;
         }
 
+        ApplyDifficultyPreset();
+        networkMonsterSkin.Value = PoppyMonsterShop.SelectedSkin;
+        ApplyMonsterSkin(networkMonsterSkin.Value);
         agent.speed = patrolSpeed;
         ChoosePatrolDestination();
     }
@@ -93,6 +109,7 @@ public class HuggyHunterAI : NetworkBehaviour
     public override void OnNetworkDespawn()
     {
         networkState.OnValueChanged -= OnStateChanged;
+        networkMonsterSkin.OnValueChanged -= OnMonsterSkinChanged;
     }
 
     private void Update()
@@ -351,6 +368,31 @@ public class HuggyHunterAI : NetworkBehaviour
         {
             Camera.main.transform.LookAt(transform.position + Vector3.up * 1.6f);
         }
+    }
+
+    private void ApplyDifficultyPreset()
+    {
+        // 0 = Easy, 1 = Normal, 2 = Nightmare. Values are selected by the host.
+        int difficulty = Mathf.Clamp(PlayerPrefs.GetInt("Poppy.AIDifficulty", 1), 0, 2);
+        float[] vision = { 0.78f, 1f, 1.22f };
+        float[] speed = { 0.82f, 1f, 1.18f };
+        float[] cooldown = { 1.35f, 1f, 0.78f };
+        float[] memory = { 1.4f, 1f, 0.78f };
+
+        visionRange = baseVisionRange * vision[difficulty];
+        chaseSpeed = baseChaseSpeed * speed[difficulty];
+        attackCooldown = baseAttackCooldown * cooldown[difficulty];
+        loseTargetAfter = baseLoseTargetAfter * memory[difficulty];
+    }
+
+    private void OnMonsterSkinChanged(int previous, int current)
+    {
+        ApplyMonsterSkin(current);
+    }
+
+    private void ApplyMonsterSkin(int skinIndex)
+    {
+        PoppyMonsterShop.Apply(gameObject, skinIndex);
     }
 
     private void OnStateChanged(byte previous, byte current)
