@@ -70,6 +70,8 @@ public class PoppyMainMenu : MonoBehaviour
         if (connected)
         {
             wasConnectedToSession = true;
+            isShopOpen = false;
+            PoppyUIInputGate.SetShopOpen(false);
             if (menuCanvas != null && menuCanvas.gameObject.activeSelf)
                 menuCanvas.gameObject.SetActive(false);
             PoppyUIInputGate.SetMenuOpen(false);
