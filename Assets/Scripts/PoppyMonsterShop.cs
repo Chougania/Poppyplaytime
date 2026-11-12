@@ -26,13 +26,15 @@ public static class PoppyMonsterShop
         new Color32(245, 90, 25, 255)
     };
 
-    private static readonly int[] Prices = { 0, 180, 220, 240, 280, 320 };
+    private static readonly int[] Prices = { 0, 180, 220, 240, 0, 0 };
+    private static readonly int[] TicketPrices = { 0, 0, 0, 0, 1, 2 };
 
     public static int SkinCount => Names.Length;
     public static int SelectedSkin => Mathf.Clamp(PlayerPrefs.GetInt(SelectedKey, 0), 0, SkinCount - 1);
     public static string GetName(int index) => Names[Mathf.Clamp(index, 0, Names.Length - 1)];
     public static Color GetColor(int index) => Colors[Mathf.Clamp(index, 0, Colors.Length - 1)];
     public static int GetPrice(int index) => Prices[Mathf.Clamp(index, 0, Prices.Length - 1)];
+    public static int GetTicketPrice(int index) => TicketPrices[Mathf.Clamp(index, 0, TicketPrices.Length - 1)];
 
     public static bool IsUnlocked(int index)
     {
@@ -47,12 +49,20 @@ public static class PoppyMonsterShop
 
         if (!IsUnlocked(index))
         {
-            int price = GetPrice(index);
-            int credits = PlayerPrefs.GetInt(CreditsKey, 350);
-            if (credits < price)
-                return false;
-
-            PlayerPrefs.SetInt(CreditsKey, credits - price);
+            int ticketPrice = GetTicketPrice(index);
+            if (ticketPrice > 0)
+            {
+                if (!PoppyShop.SpendTickets(ticketPrice))
+                    return false;
+            }
+            else
+            {
+                int price = GetPrice(index);
+                int credits = PlayerPrefs.GetInt(CreditsKey, 350);
+                if (credits < price)
+                    return false;
+                PlayerPrefs.SetInt(CreditsKey, credits - price);
+            }
             PlayerPrefs.SetInt(UnlockedPrefix + index, 1);
         }
 
