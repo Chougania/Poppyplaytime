@@ -187,3 +187,23 @@ Branche : `upgrade/full-ui-lobby-rework`
 - Vérifier que la scène `Lobby` est dans Build Settings.
 
 Les scripts ont été vérifiés statiquement (structure des accolades et cohérence des appels ajoutés). La compilation Unity, les tests de clics UI en Play Mode, la scène additive en build, le multijoueur Relay et les tests de caméra doivent encore être exécutés dans Unity 2022.3.62f3.
+
+
+## Nouveau menu cinématique (branche `feature/cinematic-main-menu`)
+
+Le menu principal a été reconstruit autour d'une salle d'exposition industrielle :
+- Décor d'usine généré à l'exécution : murs, sol, structures métalliques, enseigne PLAYTIME CO., lumières froides et éclairages rouges vacillants.
+- Le personnage joueur est une copie visuelle du Player Prefab Netcode, placée immobile sur un présentoir à droite de l'écran. Ses scripts de gameplay, colliders, caméras et comportements sont désactivés pour éviter les mouvements et les tirs du GrabPack dans le menu.
+- Le bouton **SHOP** masque le menu principal et déplace la caméra vers le présentoir du joueur. Le joueur tourne automatiquement sur son axe vertical ; le glissement horizontal de la souris permet de le tourner uniquement de gauche à droite.
+- Le bouton **MONSTERS** déplace la caméra vers trois box de confinement. Le catalogue permet de parcourir les apparences de monstres, de voir leur prix en Credits ou Tickets, puis de les sélectionner/débloquer. La souris ne contrôle que la rotation horizontale du modèle.
+- Les transitions de caméra sont interpolées et peuvent être interrompues proprement en revenant à l'écran principal.
+- **Entrée** lance directement une partie solo contre l'IA depuis l'écran principal. La touche Échap revient au menu principal depuis la boutique ou le choix du monstre.
+- Le nom du joueur, le code Relay, les soldes et le crédit CHOUGAN2 sont conservés dans l'interface.
+
+### Configuration / limites
+- La scène d'entrée doit s'appeler exactement `Lobby`.
+- Le `NetworkManager` doit avoir un `Player Prefab` assigné pour afficher le vrai modèle joueur dans le menu.
+- Le modèle Huggy de présentation est recherché dans la scène sous le nom existant `Poppy_Playtime__Box_-_Huggy_Wuggy`. S'il est absent, les box et l'interface fonctionnent, mais l'aperçu 3D du monstre reste vide.
+- Les assets de décor sont générés à l'exécution ; aucun package graphique externe n'est requis.
+- Les transitions et la rotation utilisent l'ancien Input Manager Unity (`Input.GetMouseButton`, `Input.mousePosition`). Vérifier que `Active Input Handling` autorise l'Input Manager dans Player Settings.
+- Cette branche a reçu une vérification statique uniquement. Compiler et tester le menu, le prefab joueur et les transitions dans Unity 2022.3.62f3 avant de fusionner.
