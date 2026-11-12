@@ -56,6 +56,15 @@ public class GrabpackController : NetworkBehaviour
 		if (!IsSpawned || !IsOwner)
 			return;
 
+		if (PoppyUIInputGate.ShouldBlockGameplayMouse())
+		{
+			if (blueHand != null && blueHand.CurrentState != GrabpackHand.HandState.Idle)
+				RetractHandAndReleaseDoor(blueHand, 0);
+			if (redHand != null && redHand.CurrentState != GrabpackHand.HandState.Idle)
+				RetractHandAndReleaseDoor(redHand, 1);
+			return;
+		}
+
 		UpdateBatteryPositions();
 		if (Input.GetMouseButtonDown(0))
 		{
@@ -89,7 +98,7 @@ public class GrabpackController : NetworkBehaviour
 
 	private void FixedUpdate()
 	{
-		if (IsOwner)
+		if (IsOwner && !PoppyUIInputGate.IsBlocked)
 		{
 			HandleGrabpackPhysics();
 			HandleReelInPhysics();
