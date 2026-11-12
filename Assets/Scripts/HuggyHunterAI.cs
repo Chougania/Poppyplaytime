@@ -213,7 +213,7 @@ public class HuggyHunterAI : NetworkBehaviour
                 return false;
         }
 
-        return firstVisiblePlayer == null || firstVisiblePlayer == candidate;
+        return nearestDistance == float.MaxValue || firstVisiblePlayer == candidate;
     }
 
     private void UpdatePatrol()
