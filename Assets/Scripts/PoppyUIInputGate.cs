@@ -1,32 +1,32 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-/// <summary>
-/// Single source of truth for gameplay input ownership.
-/// Menus, pause panels, shops and lobby screens block movement and GrabPack input.
-/// </summary>
+/// <summary>Central gate preventing gameplay input while any UI layer owns the cursor.</summary>
 public static class PoppyUIInputGate
 {
-    private static int blockingOwners;
+    private static bool menuOpen;
+    private static bool lobbyOpen;
+    private static bool pauseOpen;
+    private static bool shopOpen;
 
-    public static bool IsBlocked => blockingOwners > 0;
+    public static bool IsBlocked => menuOpen || lobbyOpen || pauseOpen || shopOpen;
 
-    public static void SetBlocked(bool blocked)
-    {
-        blockingOwners = blocked ? Mathf.Max(0, blockingOwners + 1) : Mathf.Max(0, blockingOwners - 1);
-    }
+    public static void SetMenuOpen(bool value) { menuOpen = value; }
+    public static void SetLobbyOpen(bool value) { lobbyOpen = value; }
+    public static void SetPauseOpen(bool value) { pauseOpen = value; }
+    public static void SetShopOpen(bool value) { shopOpen = value; }
 
     public static void Clear()
     {
-        blockingOwners = 0;
+        menuOpen = false;
+        lobbyOpen = false;
+        pauseOpen = false;
+        shopOpen = false;
     }
 
     public static bool IsPointerOverUI()
     {
-        if (EventSystem.current == null)
-            return false;
-
-        return EventSystem.current.IsPointerOverGameObject();
+        return EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
     }
 
     public static bool ShouldBlockGameplayMouse()
