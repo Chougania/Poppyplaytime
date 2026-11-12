@@ -369,7 +369,7 @@ public class PoppyMainMenu : MonoBehaviour
     private void RefreshShop()
     {
         if (shopCreditsLabel != null)
-            shopCreditsLabel.text = "CREDITS  " + PoppyShop.Credits;
+            shopCreditsLabel.text = "CREDITS  " + PoppyShop.Credits + "     ★ TICKETS  " + PoppyShop.Tickets;
         if (shopStatusLabel != null)
             shopStatusLabel.text = "EQUIPPED: " + PoppyShop.GetColorName(PoppyShop.SelectedColor) +
                 "     •     CREDITS ARE EARNED AFTER MATCHES";
@@ -404,7 +404,9 @@ public class PoppyMainMenu : MonoBehaviour
         if (PoppyMonsterShop.IsUnlocked(index))
             return (PoppyMonsterShop.SelectedSkin == index ? "✓ " : "") +
                 PoppyMonsterShop.GetName(index) + "  •  OWNED";
-        return PoppyMonsterShop.GetName(index) + "  •  " + PoppyMonsterShop.GetPrice(index) + " C";
+        int ticketPrice = PoppyMonsterShop.GetTicketPrice(index);
+        return PoppyMonsterShop.GetName(index) + "  •  " +
+            (ticketPrice > 0 ? ticketPrice + " TICKETS" : PoppyMonsterShop.GetPrice(index) + " C");
     }
 
     private void BuyOrEquipMonsterSkin(int index)
@@ -413,7 +415,7 @@ public class PoppyMainMenu : MonoBehaviour
         if (shopStatusLabel != null)
             shopStatusLabel.text = success
                 ? "MONSTER EQUIPPED: " + PoppyMonsterShop.GetName(index)
-                : "NOT ENOUGH CREDITS FOR THIS MONSTER SKIN.";
+                : (PoppyMonsterShop.GetTicketPrice(index) > 0 ? "NOT ENOUGH TICKETS." : "NOT ENOUGH CREDITS.");
         RefreshShop();
         ApplyPreviewSkin();
     }
