@@ -26,6 +26,8 @@ public static class PoppyMenuBootstrap
         if (!scene.IsValid() || scene.name != "Lobby")
             return;
 
+        EnsureLobbyUI();
+
         if (Object.FindObjectOfType<PoppyMainMenu>() != null)
             return;
 
@@ -99,6 +101,17 @@ public static class PoppyMenuBootstrap
         menu.characterPreview = playerPreview;
         menu.huggyPreview = huggyPreview;
         menu.buildCorridorAtRuntime = true;
+    }
+
+    private static void EnsureLobbyUI()
+    {
+        if (Object.FindObjectOfType<PoppyLobbyUI>() != null)
+            return;
+
+        GameObject lobbyRoot = new GameObject("PoppyLobbyUI_Runtime");
+        PoppyLobbyUI lobby = lobbyRoot.AddComponent<PoppyLobbyUI>();
+        lobby.connectionManager = Object.FindObjectOfType<ConnectionManafer>();
+        lobby.gameManager = Object.FindObjectOfType<GameManager>();
     }
 
     private static Transform FindHuggyPreview()
