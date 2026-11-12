@@ -291,6 +291,7 @@ public class PoppyMainMenu : MonoBehaviour
             huggyPreview.localRotation = Quaternion.Euler(0f, 180f, 0f);
         }
         PausePreviewAnimator(huggyPreview);
+        DisablePreviewBehaviours(huggyPreview);
         DisablePreviewPhysics(huggyPreview);
     }
 
@@ -302,6 +303,17 @@ public class PoppyMainMenu : MonoBehaviour
         {
             animators[i].speed = 0f;
             animators[i].applyRootMotion = false;
+        }
+    }
+
+    private void DisablePreviewBehaviours(Transform root)
+    {
+        if (root == null) return;
+        Behaviour[] behaviours = root.GetComponentsInChildren<Behaviour>(true);
+        for (int i = 0; i < behaviours.Length; i++)
+        {
+            if (!(behaviours[i] is Animator))
+                behaviours[i].enabled = false;
         }
     }
 
