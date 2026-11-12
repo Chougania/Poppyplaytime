@@ -69,7 +69,6 @@ public class GameManager : NetworkBehaviour
 			}
 			return true;
 		}
-		}
 	}
 
 	public void StartMatchFromLobby()
