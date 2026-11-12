@@ -32,6 +32,7 @@ public class PoppyMainMenu : MonoBehaviour
     private TextMeshProUGUI shopCreditsLabel;
     private TextMeshProUGUI shopStatusLabel;
     private bool isShopOpen;
+    private bool wasConnectedToSession;
     private Transform corridorRoot;
     private Material wallMaterial;
     private Material floorMaterial;
@@ -63,27 +64,46 @@ public class PoppyMainMenu : MonoBehaviour
 
     private void Update()
     {
-        if (connectionManager != null && connectionManager.networkManager != null &&
-            connectionManager.networkManager.IsListening && menuCanvas != null && menuCanvas.gameObject.activeSelf)
+        bool connected = connectionManager != null && connectionManager.networkManager != null &&
+            connectionManager.networkManager.IsListening;
+
+        if (connected)
         {
-            menuCanvas.gameObject.SetActive(false);
+            wasConnectedToSession = true;
+            if (menuCanvas != null && menuCanvas.gameObject.activeSelf)
+                menuCanvas.gameObject.SetActive(false);
             PoppyUIInputGate.SetMenuOpen(false);
-            if (corridorRoot != null)
-                corridorRoot.gameObject.SetActive(false);
+            if (corridorRoot != null) corridorRoot.gameObject.SetActive(false);
             if (characterPreview != null && characterPreview.name == "PoppyMenu_PlayerPreview")
                 characterPreview.gameObject.SetActive(false);
-            if (huggyPreview != null)
-                huggyPreview.gameObject.SetActive(false);
+            if (huggyPreview != null) huggyPreview.gameObject.SetActive(false);
             if (menuCamera != null)
             {
                 menuCamera.enabled = false;
                 AudioListener listener = menuCamera.GetComponent<AudioListener>();
-                if (listener != null)
-                    listener.enabled = false;
+                if (listener != null) listener.enabled = false;
             }
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+        else if (wasConnectedToSession)
+        {
+            wasConnectedToSession = false;
+            if (menuCanvas != null) menuCanvas.gameObject.SetActive(true);
+            if (corridorRoot != null) corridorRoot.gameObject.SetActive(true);
+            if (characterPreview != null) characterPreview.gameObject.SetActive(true);
+            if (huggyPreview != null) huggyPreview.gameObject.SetActive(true);
+            if (menuCamera != null)
+            {
+                menuCamera.enabled = true;
+                AudioListener listener = menuCamera.GetComponent<AudioListener>();
+                if (listener != null) listener.enabled = true;
+            }
+            PoppyUIInputGate.SetMenuOpen(true);
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+        }
+
         if (walletLabel != null)
             walletLabel.text = "CREDITS  " + PoppyShop.Credits + "      ★ TICKETS  " + PoppyShop.Tickets;
     }
