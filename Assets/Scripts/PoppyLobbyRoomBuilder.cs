@@ -98,9 +98,9 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
         lobbyCamera.transform.position = origin + cameraOffset;
         lobbyCamera.transform.LookAt(origin + cameraLookOffset);
         lobbyCamera.fieldOfView = 58f;
-        lobbyCamera.enabled = true;
+        lobbyCamera.enabled = false;
         AudioListener listener = lobbyCamera.GetComponent<AudioListener>();
-        if (listener != null) listener.enabled = true;
+        if (listener != null) listener.enabled = false;
         StartCoroutine(PowerFlicker());
     }
 
