@@ -36,6 +36,31 @@ Le dossier `autres/GrabPack-Unity-Project-1.1-main` est conservé comme **réfé
 
 Les systèmes à évaluer et intégrer progressivement sont notamment le câble physique, le lancement de main, l'interaction, le scanner de main et l'IA. Chaque intégration doit être adaptée à l'architecture réseau et aux composants déjà utilisés par ce projet. Vérifiez également les licences et conditions de redistribution des ressources avant de publier une copie.
 
+
+### GrabPack : progression et mains spécialisées
+
+Le prefab `Assets/Prefabs/Player.prefab` reçoit maintenant `GrabpackProgression`. Les mains bleue et rouge restent disponibles au départ. Les capacités supplémentaires se débloquent par stations de progression et leur état est répliqué par Netcode, puis sauvegardé localement pour le joueur :
+
+| Capacité | Utilisation prévue dans les puzzles |
+|---|---|
+| Verte | alimenter un récepteur / transférer une charge |
+| Magnétique | activer un mécanisme magnétique |
+| Flare | déclencher un récepteur sensible à la chaleur |
+| Blacklight | révéler un indice ou un symbole caché |
+
+**Configurer un déblocage :**
+1. Ajoutez `GrabpackUnlockStation` à un objet de la carte avec un Collider en mode **Is Trigger**.
+2. Choisissez `Green`, `Magnet`, `Flare` ou `Blacklight` dans `Ability To Unlock`.
+3. Le joueur doit entrer dans le volume avec son personnage réseau. Le serveur accorde la capacité une seule fois.
+
+**Configurer un puzzle :**
+1. Ajoutez un `NetworkObject` et `GrabpackPuzzleInteractable` à l'objet qui doit être activé.
+2. Choisissez la capacité attendue dans `Required Ability`.
+3. Reliez `On Activated` à l'action du puzzle (porte, lumière, ascenseur, alimentation, etc.) et assignez éventuellement `Activated Visual`.
+4. Le joueur vise l'objet et appuie sur **E**. Le serveur vérifie la capacité débloquée et la distance avant d'activer le puzzle. L'état activé est répliqué.
+
+**Modèles des mains :** le prefab expose les emplacements `greenHandVisual`, `magnetHandVisual`, `flareHandVisual` et `blacklightHandVisual`. Ils sont laissés vides par défaut : glissez-y les modèles/objets correspondants dans Unity pour afficher les mains. Les capacités et les puzzles fonctionnent sans ces références visuelles, mais les nouveaux modèles 3D, leurs animations et leurs effets spécifiques doivent encore être assignés/créés dans le prefab et les scènes. Les scripts de l'ancien projet dans `autres` ne sont pas copiés tels quels, afin d'éviter les dépendances et conflits avec le Netcode actuel.
+
 ## Vérification
 
 Les modifications de cette branche ont été relues statiquement à partir des fichiers source. **La compilation Unity, les scènes en Play Mode et les tests multijoueurs ne sont pas encore validés** : ils doivent être exécutés dans Unity 2022.3.62f3 avec au moins deux clients.
