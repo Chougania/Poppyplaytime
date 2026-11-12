@@ -97,20 +97,33 @@ public class GrabpackColorManager : NetworkBehaviour
 
 	public override void OnNetworkSpawn()
 	{
-		if (leftHandSetup.handRenderer != null)
-		{
-			leftHandMaterialInstance = leftHandSetup.handRenderer.materials[leftHandSetup.materialIndex];
-		}
-		if (rightHandSetup.handRenderer != null)
-		{
-			rightHandMaterialInstance = rightHandSetup.handRenderer.materials[rightHandSetup.materialIndex];
-		}
-		if (IsOwner)
-		{
+		leftHandMaterialInstance = GetHandMaterial(leftHandSetup, "left");
+		rightHandMaterialInstance = GetHandMaterial(rightHandSetup, "right");
+
+		if (!IsOwner)
+			return;
+
+		if (leftHandSetup != null)
 			FindAndHookUpUI(isLeftHand: true, leftHandSetup);
+		if (rightHandSetup != null)
 			FindAndHookUpUI(isLeftHand: false, rightHandSetup);
-			CacheMovementComponents();
+
+		CacheMovementComponents();
+	}
+
+	private Material GetHandMaterial(HandReferences setup, string side)
+	{
+		if (setup == null || setup.handRenderer == null)
+			return null;
+
+		Material[] materials = setup.handRenderer.materials;
+		if (setup.materialIndex < 0 || setup.materialIndex >= materials.Length)
+		{
+			Debug.LogWarning($"GrabpackColorManager: Invalid {side} hand material index.", this);
+			return null;
 		}
+
+		return materials[setup.materialIndex];
 	}
 
 	private void Update()
@@ -119,6 +132,9 @@ public class GrabpackColorManager : NetworkBehaviour
 		{
 			return;
 		}
+		if (string.IsNullOrEmpty(customizationCanvasName))
+			return;
+
 		GameObject gameObject = GameObject.Find(customizationCanvasName);
 		if (gameObject != null)
 		{
@@ -137,7 +153,7 @@ public class GrabpackColorManager : NetworkBehaviour
 		{
 			characterController.enabled = canMove;
 		}
-		if (playerRigidbody != null && playerRigidbody != null)
+		if (playerRigidbody != null)
 		{
 			playerRigidbody.velocity = Vector3.zero;
 			playerRigidbody.angularVelocity = Vector3.zero;
@@ -230,7 +246,8 @@ public class GrabpackColorManager : NetworkBehaviour
 	[ServerRpc]
 	public void RequestHandColorChangeServerRpc(bool isLeftHand, int colorIndex)
 	{
-		if (colorIndex >= 0 && colorIndex < colorPalette.Length)
+		if (colorPalette != null && colorIndex >= 0 && colorIndex < colorPalette.Length &&
+			colorPalette[colorIndex] != null)
 		{
 			UpdateHandColorClientRpc(isLeftHand, colorIndex);
 		}
@@ -239,6 +256,10 @@ public class GrabpackColorManager : NetworkBehaviour
 	[ClientRpc]
 	private void UpdateHandColorClientRpc(bool isLeftHand, int colorIndex)
 	{
+		if (colorPalette == null || colorIndex < 0 || colorIndex >= colorPalette.Length ||
+			colorPalette[colorIndex] == null)
+			return;
+
 		Color colorValue = colorPalette[colorIndex].colorValue;
 		if (isLeftHand && leftHandMaterialInstance != null)
 		{
@@ -261,7 +282,9 @@ public class GrabpackColorManager : NetworkBehaviour
 	private void UpdateSceneTextDisplay(bool isLeftHand, int colorIndex)
 	{
 		HandReferences handReferences = (isLeftHand ? leftHandSetup : rightHandSetup);
-		if (string.IsNullOrEmpty(handReferences.colorStatusTextName))
+		if (handReferences == null || colorPalette == null || colorIndex < 0 ||
+			colorIndex >= colorPalette.Length || colorPalette[colorIndex] == null ||
+			string.IsNullOrEmpty(handReferences.colorStatusTextName))
 		{
 			return;
 		}

@@ -39,28 +39,56 @@ public class ConnectionManafer : MonoBehaviour
 	private Lobby hostedLobby;
 
 	private bool _isJoiningClient;
+	private bool _isCleaningLobby;
+	private Task<bool> _servicesReadyTask;
 
 	private async void Awake()
 	{
 		VerifyInspectorAssignments();
-		if (UnityServices.State != ServicesInitializationState.Uninitialized)
-		{
-			return;
-		}
-		InitializationOptions options = new InitializationOptions();
-		options.SetProfile("Player_" + UnityEngine.Random.Range(1000, 9999));
+		await EnsureServicesReadyAsync();
+	}
+
+	private Task<bool> EnsureServicesReadyAsync()
+	{
+		if (_servicesReadyTask == null || _servicesReadyTask.IsFaulted || _servicesReadyTask.IsCanceled)
+			_servicesReadyTask = InitializeServicesAsync();
+
+		return _servicesReadyTask;
+	}
+
+	private async Task<bool> InitializeServicesAsync()
+	{
 		try
 		{
-			await UnityServices.InitializeAsync(options);
+			if (UnityServices.State == ServicesInitializationState.Uninitialized)
+			{
+				InitializationOptions options = new InitializationOptions();
+				options.SetProfile("Player_" + UnityEngine.Random.Range(1000, 9999));
+				await UnityServices.InitializeAsync(options);
+			}
+
+			int waitAttempts = 0;
+			while (UnityServices.State == ServicesInitializationState.Initializing && waitAttempts++ < 100)
+				await Task.Delay(100);
+
+			if (UnityServices.State != ServicesInitializationState.Initialized)
+			{
+				Debug.LogError("[Netcode] Unity Services did not reach the Initialized state.");
+				return false;
+			}
+
 			if (!AuthenticationService.Instance.IsSignedIn)
 			{
 				await AuthenticationService.Instance.SignInAnonymouslyAsync();
 				Debug.Log("[Netcode Authentication] Profile Loaded: " + AuthenticationService.Instance.PlayerId);
 			}
+
+			return AuthenticationService.Instance.IsSignedIn;
 		}
 		catch (Exception ex)
 		{
-			Debug.LogError("[Netcode Error] Initialization crashed: " + ex.Message);
+			Debug.LogError("[Netcode Error] Services initialization/authentication failed: " + ex.Message);
+			return false;
 		}
 	}
 
@@ -93,7 +121,7 @@ public class ConnectionManafer : MonoBehaviour
 
 	private void MirrorTextToNetworkManager(string incomingText)
 	{
-		rawLiveCode = incomingText.Replace("\u200b", "").Replace("\n", "").Replace("\r", "")
+		rawLiveCode = (incomingText ?? string.Empty).Replace("\u200b", "").Replace("\n", "").Replace("\r", "")
 			.ToUpper()
 			.Trim();
 	}
@@ -101,30 +129,39 @@ public class ConnectionManafer : MonoBehaviour
 	public async void HostAServer()
 	{
 		if (networkManager == null)
-		{
 			networkManager = NetworkManager.Singleton;
-		}
-		SavePlayerName();
-		float timeoutCounter = 5f;
-		while ((UnityServices.State != ServicesInitializationState.Initialized || !AuthenticationService.Instance.IsSignedIn) && timeoutCounter > 0f)
+		if (networkManager == null)
 		{
-			await Task.Delay(250);
-			timeoutCounter -= 0.25f;
-		}
-		if (UnityServices.State != ServicesInitializationState.Initialized || !AuthenticationService.Instance.IsSignedIn)
-		{
-			Debug.LogError("[Netcode Critical] Host canceled! Services failed to authenticate.");
+			Debug.LogError("[Netcode] Cannot host: no NetworkManager is assigned or available in the scene.");
 			return;
 		}
-		if (networkManager.IsServer || networkManager.IsClient)
+
+		SavePlayerName();
+		if (!await EnsureServicesReadyAsync())
 		{
-			Debug.LogWarning("[Netcode] NetworkManager was already running! Forcing a hard shutdown before restarting host...");
+			Debug.LogError("[Netcode Critical] Host canceled because Unity Services authentication is unavailable.");
+			return;
+		}
+
+		if (networkManager.IsListening)
+		{
+			Debug.LogWarning("[Netcode] Shutting down the existing session before starting a new host.");
 			networkManager.Shutdown();
 			await Task.Delay(500);
+			if (networkManager.IsListening)
+			{
+				Debug.LogError("[Netcode] Existing session did not shut down in time.");
+				return;
+			}
 		}
 		try
 		{
 			UnityTransport transport = networkManager.GetComponent<UnityTransport>();
+			if (transport == null)
+			{
+				Debug.LogError("[Netcode] Cannot host: UnityTransport is missing from the NetworkManager object.");
+				return;
+			}
 			Allocation allocation = await RelayService.Instance.CreateAllocationAsync(4);
 			string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
 			if (permanentCodeText != null)
@@ -185,10 +222,18 @@ public class ConnectionManafer : MonoBehaviour
 	public async void JoinWithCode()
 	{
 		if (networkManager == null)
-		{
 			networkManager = NetworkManager.Singleton;
+		if (networkManager == null)
+		{
+			Debug.LogError("[Netcode] Cannot join: no NetworkManager is assigned or available in the scene.");
+			return;
 		}
-		if (string.IsNullOrEmpty(rawLiveCode) && codeInputField != null)
+		if (networkManager.IsListening)
+		{
+			Debug.LogWarning("[Netcode] A network session is already active. Leave it before joining another room.");
+			return;
+		}
+		if (codeInputField != null)
 		{
 			rawLiveCode = codeInputField.text.Replace("\u200b", "").Replace("\n", "").Replace("\r", "")
 				.ToUpper()
@@ -200,17 +245,22 @@ public class ConnectionManafer : MonoBehaviour
 			return;
 		}
 		SavePlayerName();
-		float timeoutCounter = 5f;
-		while ((UnityServices.State != ServicesInitializationState.Initialized || !AuthenticationService.Instance.IsSignedIn) && timeoutCounter > 0f)
+		if (!await EnsureServicesReadyAsync())
 		{
-			await Task.Delay(250);
-			timeoutCounter -= 0.25f;
+			Debug.LogError("[Netcode] Cannot join: Unity Services authentication is unavailable.");
+			return;
 		}
 		try
 		{
 			Debug.Log("[Netcode] Connecting client to Relay room: '" + rawLiveCode + "'");
+			UnityTransport transport = networkManager.GetComponent<UnityTransport>();
+			if (transport == null)
+			{
+				Debug.LogError("[Netcode] Cannot join: UnityTransport is missing from the NetworkManager object.");
+				return;
+			}
 			JoinAllocation allocation = await RelayService.Instance.JoinAllocationAsync(rawLiveCode);
-			networkManager.GetComponent<UnityTransport>().SetRelayServerData(new RelayServerData(allocation, "udp"));
+			transport.SetRelayServerData(new RelayServerData(allocation, "udp"));
 			await Task.Delay(200);
 			if (networkManager.StartClient())
 			{
@@ -230,27 +280,40 @@ public class ConnectionManafer : MonoBehaviour
 	public async void JoinRandomServer()
 	{
 		if (networkManager == null)
-		{
 			networkManager = NetworkManager.Singleton;
+		if (networkManager == null)
+		{
+			Debug.LogError("[Netcode] Cannot quick-join: no NetworkManager is assigned or available in the scene.");
+			return;
+		}
+		if (networkManager.IsListening)
+		{
+			Debug.LogWarning("[Netcode] A network session is already active. Leave it before joining another room.");
+			return;
 		}
 		SavePlayerName();
-		float timeoutCounter = 5f;
-		while ((UnityServices.State != ServicesInitializationState.Initialized || !AuthenticationService.Instance.IsSignedIn) && timeoutCounter > 0f)
+		if (!await EnsureServicesReadyAsync())
 		{
-			await Task.Delay(250);
-			timeoutCounter -= 0.25f;
+			Debug.LogError("[Netcode] Cannot quick-join: Unity Services authentication is unavailable.");
+			return;
 		}
 		try
 		{
 			Debug.Log("[Netcode] Searching for an active random room...");
 			Lobby lobby = await LobbyService.Instance.QuickJoinLobbyAsync();
-			if (lobby == null || !lobby.Data.ContainsKey("RelayCode"))
+			if (lobby == null || lobby.Data == null || !lobby.Data.ContainsKey("RelayCode") || string.IsNullOrWhiteSpace(lobby.Data["RelayCode"].Value))
 			{
 				return;
 			}
 			string discoveredCode = lobby.Data["RelayCode"].Value;
+			UnityTransport transport = networkManager.GetComponent<UnityTransport>();
+			if (transport == null)
+			{
+				Debug.LogError("[Netcode] Cannot quick-join: UnityTransport is missing from the NetworkManager object.");
+				return;
+			}
 			JoinAllocation allocation = await RelayService.Instance.JoinAllocationAsync(discoveredCode);
-			networkManager.GetComponent<UnityTransport>().SetRelayServerData(new RelayServerData(allocation, "udp"));
+			transport.SetRelayServerData(new RelayServerData(allocation, "udp"));
 			await Task.Delay(200);
 			if (networkManager.StartClient())
 			{
@@ -269,9 +332,11 @@ public class ConnectionManafer : MonoBehaviour
 
 	private void SavePlayerName()
 	{
-		if (nameInputField != null && !string.IsNullOrEmpty(nameInputField.text))
+		if (nameInputField != null && !string.IsNullOrWhiteSpace(nameInputField.text))
 		{
-			PlayerName = nameInputField.text;
+			PlayerName = nameInputField.text.Trim();
+			if (PlayerName.Length > 20)
+				PlayerName = PlayerName.Substring(0, 20);
 		}
 		else
 		{
@@ -334,19 +399,26 @@ public class ConnectionManafer : MonoBehaviour
 		CleanUpLobby();
 	}
 
-	private void CleanUpLobby()
+	private async void CleanUpLobby()
 	{
-		if (hostedLobby != null && AuthenticationService.Instance.IsSignedIn)
+		if (_isCleaningLobby || hostedLobby == null)
+			return;
+
+		_isCleaningLobby = true;
+		Lobby lobbyToDelete = hostedLobby;
+		hostedLobby = null;
+		CancelInvoke(nameof(HeartbeatLobby));
+
+		if (UnityServices.State != ServicesInitializationState.Initialized || !AuthenticationService.Instance.IsSignedIn)
+			return;
+
+		try
 		{
-			try
-			{
-				LobbyService.Instance.DeleteLobbyAsync(hostedLobby.Id);
-				hostedLobby = null;
-			}
-			catch (Exception ex)
-			{
-				Debug.LogWarning("[Netcode] Could not clean up lobby room on closure: " + ex.Message);
-			}
+			await LobbyService.Instance.DeleteLobbyAsync(lobbyToDelete.Id);
+		}
+		catch (Exception ex)
+		{
+			Debug.LogWarning("[Netcode] Could not clean up lobby room on closure: " + ex.Message);
 		}
 	}
 }

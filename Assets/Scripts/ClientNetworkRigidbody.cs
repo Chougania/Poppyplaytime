@@ -9,35 +9,47 @@ public class ClientNetworkRigidbody : NetworkBehaviour
 {
 	private Rigidbody _rigidbody;
 
-	private NetworkTransform _networkTransform;
-
 	private void Awake()
 	{
 		_rigidbody = GetComponent<Rigidbody>();
-		_networkTransform = GetComponent<NetworkTransform>();
 	}
 
-	private void Update()
+	public override void OnNetworkSpawn()
 	{
-		if (!IsOwner)
-		{
-			if (!_rigidbody.isKinematic)
-			{
-				_rigidbody.isKinematic = true;
-			}
-		}
-		else if (_rigidbody.isKinematic)
-		{
-			_rigidbody.isKinematic = false;
-		}
+		ApplySimulationAuthority();
+	}
+
+	public override void OnGainedOwnership()
+	{
+		ApplySimulationAuthority();
+	}
+
+	public override void OnLostOwnership()
+	{
+		ApplySimulationAuthority();
+	}
+
+	private void ApplySimulationAuthority()
+	{
+		if (!IsSpawned || _rigidbody == null)
+			return;
+
+		// Only the owning peer simulates this Rigidbody; NetworkTransform replicates it.
+		_rigidbody.isKinematic = !IsOwner;
 	}
 
 	public void RequestOwnership(ulong gainingClientClientId)
 	{
-		if (IsServer)
+		if (!IsServer || !IsSpawned || NetworkManager.Singleton == null)
+			return;
+
+		if (!NetworkManager.Singleton.ConnectedClients.ContainsKey(gainingClientClientId))
 		{
-			NetworkObject.ChangeOwnership(gainingClientClientId);
+			Debug.LogWarning($"Cannot transfer object ownership: client {gainingClientClientId} is not connected.", this);
+			return;
 		}
+
+		NetworkObject.ChangeOwnership(gainingClientClientId);
 	}
 }
 
