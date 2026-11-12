@@ -52,7 +52,12 @@ public class PoppyLobbyUI : MonoBehaviour
         if (!connected)
         {
             if (isVisible) SetVisible(false, false);
-            ApplyLobbyCamera(false);
+            if (roomBuilder != null && roomBuilder.lobbyCamera != null)
+            {
+                roomBuilder.lobbyCamera.enabled = false;
+                AudioListener lobbyListener = roomBuilder.lobbyCamera.GetComponent<AudioListener>();
+                if (lobbyListener != null) lobbyListener.enabled = false;
+            }
             return;
         }
 
