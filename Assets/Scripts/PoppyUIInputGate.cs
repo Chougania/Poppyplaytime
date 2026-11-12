@@ -10,6 +10,7 @@ public static class PoppyUIInputGate
     private static bool shopOpen;
 
     public static bool IsBlocked => menuOpen || lobbyOpen || pauseOpen || shopOpen;
+    public static bool IsGameplayBlocked => IsBlocked || Cursor.lockState != CursorLockMode.Locked || IsPointerOverUI();
 
     public static void SetMenuOpen(bool value) { menuOpen = value; }
     public static void SetLobbyOpen(bool value) { lobbyOpen = value; }
