@@ -52,6 +52,7 @@ public class PoppyLobbyUI : MonoBehaviour
         if (!connected)
         {
             if (isVisible) SetVisible(false, false);
+            ApplyLobbyCamera(false);
             return;
         }
 
