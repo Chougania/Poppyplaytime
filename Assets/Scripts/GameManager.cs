@@ -41,6 +41,7 @@ public class GameManager : NetworkBehaviour
 	private readonly HashSet<ulong> _eliminatedClients = new HashSet<ulong>();
 
 	private bool _gameStarted;
+	private int _roundId;
 
 	public bool IsGameStarted => _netGameStarted.Value;
 	public bool IsClientReady(ulong clientId) => _readyClients.Contains(clientId);
@@ -255,6 +256,8 @@ public class GameManager : NetworkBehaviour
 		if (!IsServer || _gameStarted || NetworkManager.Singleton == null)
 			yield break;
 
+		_roundId++;
+		int currentRoundId = _roundId;
 		_gameStarted = true;
 		_netGameStarted.Value = true;
 		_eliminatedClients.Clear();
@@ -262,14 +265,22 @@ public class GameManager : NetworkBehaviour
 		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		SetRoleNotificationClientRpc("Assigning Roles...");
 		yield return new WaitForSecondsRealtime(3f);
-		AssignRolesAndSpawn();
+		if (!IsServer || currentRoundId != _roundId || !_gameStarted)
+			yield break;
 
-		while (IsServer && _netTimer.Value > 0)
+		AssignRolesAndSpawn();
+		if (!_gameStarted || currentRoundId != _roundId)
+			yield break;
+
+		while (IsServer && currentRoundId == _roundId && _gameStarted && _netTimer.Value > 0)
 		{
 			yield return new WaitForSecondsRealtime(1f);
+			if (currentRoundId != _roundId || !_gameStarted)
+				yield break;
 			_netTimer.Value = Mathf.Max(0, _netTimer.Value - 1);
 		}
-		EndGame();
+		if (currentRoundId == _roundId && _gameStarted)
+			EndGame();
 	}
 
 	private void AssignRolesAndSpawn()
@@ -506,6 +517,7 @@ public class GameManager : NetworkBehaviour
 		if (!IsServer || NetworkManager.Singleton == null)
 			return;
 
+		_roundId++;
 		_gameStarted = false;
 		_netGameStarted.Value = false;
 		_eliminatedClients.Clear();
