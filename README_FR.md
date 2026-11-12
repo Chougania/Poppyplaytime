@@ -25,6 +25,10 @@ La branche `upgrade/gameplay-polish` prépare les améliorations suivantes :
 - **Physique du GrabPack :** vérifications des références caméra, CharacterController et points de sortie avant les calculs physiques.
 - **Personnalisation des mains :** vérification des références de configuration, des index de matériaux et des entrées de palette pour éviter les erreurs d'index et les NullReferenceException.
 - **Gestion de partie :** chronomètre écrit uniquement par le serveur, durée minimale validée, gestion plus sûre du cycle réseau et chronomètre indépendant de Time.timeScale.
+- **Connexion en ligne :** initialisation Unity Services partagée entre les boutons Host/Join, authentification vérifiée même si les services étaient déjà initialisés, contrôles NetworkManager/UnityTransport et arrêt plus propre de la session Lobby.
+- **Pseudo joueur :** nom répliqué et borné, affichage du tag au-dessus du joueur avec orientation vers la caméra.
+- **Rigidbody réseau :** autorité de simulation recalculée à chaque changement de propriétaire, au lieu de basculer la physique chaque frame.
+- **Anti-triche de base :** validation côté serveur du rôle du monstre, de la cible, de la distance et de la zone d'attaque avant une élimination.
 
 ## Dossier `autres`
 
