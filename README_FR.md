@@ -39,7 +39,7 @@ Les systèmes à évaluer et intégrer progressivement sont notamment le câble 
 
 ### GrabPack : progression et mains spécialisées
 
-Le prefab `Assets/Prefabs/Player.prefab` reçoit maintenant `GrabpackProgression`. Les mains bleue et rouge restent disponibles au départ. Les capacités supplémentaires se débloquent par stations de progression et leur état est répliqué par Netcode, puis sauvegardé localement pour le joueur :
+Le prefab `Assets/Prefabs/Player.prefab` reçoit maintenant `GrabpackProgression`. Les mains bleue et rouge restent disponibles au départ. Les capacités supplémentaires se débloquent par stations de progression et leur état est répliqué par Netcode. **Ces déblocages sont temporaires et propres à la manche : ils sont réinitialisés au début et à la fin de chaque partie.**
 
 | Capacité | Utilisation prévue dans les puzzles |
 |---|---|
@@ -79,6 +79,7 @@ Le menu masque les anciens canvases de connexion et se ferme dès que le Network
 - 8 couleurs de GrabPack/personnage.
 - Couleurs gratuites et couleurs déblocables avec des crédits.
 - Sauvegarde locale des crédits, achats et couleur équipée via PlayerPrefs.
+- Aucune sauvegarde de partie : carte, énigmes, progression de manche et mains spécialisées sont réinitialisées.
 - Le choix de couleur est envoyé au serveur au spawn du joueur puis répliqué aux autres joueurs.
 - Une manche terminée donne 100 crédits à chaque client connecté.
 
