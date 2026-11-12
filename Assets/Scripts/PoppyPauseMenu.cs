@@ -30,7 +30,9 @@ public class PoppyPauseMenu : MonoBehaviour
 
     private void Update()
     {
-        if (NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
+        NetworkManager network = NetworkManager.Singleton;
+        bool inGameSession = network != null && network.IsListening && network.IsConnectedClient;
+        if (!inGameSession)
         {
             if (isOpen) SetOpen(false);
             return;
@@ -38,15 +40,10 @@ public class PoppyPauseMenu : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Escape))
         {
-            if (PoppyPauseMenu.IsAnyOtherUIOpen())
+            if (!isOpen && (PoppyUIInputGate.IsBlocked || PoppyUIInputGate.IsPointerOverUI()))
                 return;
             SetOpen(!isOpen);
         }
-    }
-
-    private static bool IsAnyOtherUIOpen()
-    {
-        return PoppyUIInputGate.IsBlocked && instance != null && !instance.isOpen;
     }
 
     private void Build()
@@ -81,8 +78,25 @@ public class PoppyPauseMenu : MonoBehaviour
         MakeButton(panel.transform, "RETURN TO LOBBY", new Vector2(0.12f, 0.36f), new Vector2(0.88f, 0.48f), ReturnToLobby);
         MakeButton(panel.transform, "QUIT TO DESKTOP", new Vector2(0.12f, 0.20f), new Vector2(0.88f, 0.32f), () => Application.Quit());
         Label(panel.transform, "ESC  •  RESUME", 12, new Vector2(0.08f, 0.06f), new Vector2(0.92f, 0.14f), new Color(0.55f, 0.6f, 0.65f));
-        if (FindObjectOfType<EventSystem>() == null)
-            new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+        EnsureEventSystem();
+    }
+
+    private static void EnsureEventSystem()
+    {
+        EventSystem existing = FindObjectOfType<EventSystem>();
+        if (existing == null)
+        {
+            GameObject eventRoot = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+            DontDestroyOnLoad(eventRoot);
+            return;
+        }
+
+        EventSystem[] all = FindObjectsOfType<EventSystem>();
+        for (int i = 0; i < all.Length; i++)
+        {
+            if (all[i] != existing)
+                Destroy(all[i].gameObject);
+        }
     }
 
     private void ReturnToLobby()
@@ -105,8 +119,9 @@ public class PoppyPauseMenu : MonoBehaviour
         }
         else if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsListening)
         {
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            bool anotherUIOwnsCursor = PoppyUIInputGate.IsBlocked;
+            Cursor.lockState = anotherUIOwnsCursor ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.visible = anotherUIOwnsCursor;
         }
     }
 
