@@ -9,6 +9,15 @@ public static class PoppyUIInputGate
     private static bool pauseOpen;
     private static bool shopOpen;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetStatics()
+    {
+        menuOpen = false;
+        lobbyOpen = false;
+        pauseOpen = false;
+        shopOpen = false;
+    }
+
     public static bool IsBlocked => menuOpen || lobbyOpen || pauseOpen || shopOpen;
     public static bool IsGameplayBlocked => IsBlocked || Cursor.lockState != CursorLockMode.Locked || IsPointerOverUI();
 
