@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Creates a new Playtime factory waiting room around the configured lobby spawn.
@@ -38,8 +39,13 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
             if (manager != null) anchor = manager.lobbySpawnPoint;
         }
         Vector3 origin = anchor != null ? anchor.position : Vector3.zero;
+        Scene waitingScene = SceneManager.GetSceneByName("PlaytimeWaitingRoom");
+        if (!waitingScene.IsValid() || !waitingScene.isLoaded)
+            waitingScene = SceneManager.CreateScene("PlaytimeWaitingRoom");
+
         root = new GameObject("PLAYTIME_NEW_WAITING_ROOM").transform;
         root.position = origin;
+        SceneManager.MoveGameObjectToScene(root.gameObject, waitingScene);
 
         concrete = Mat("Painted factory concrete", new Color(0.12f, 0.14f, 0.15f));
         darkMetal = Mat("Dark industrial metal", new Color(0.035f, 0.045f, 0.052f));
@@ -94,6 +100,7 @@ public class PoppyLobbyRoomBuilder : MonoBehaviour
         {
             GameObject cameraObject = new GameObject("PoppyLobbyFixedCamera", typeof(Camera), typeof(AudioListener));
             lobbyCamera = cameraObject.GetComponent<Camera>();
+            SceneManager.MoveGameObjectToScene(cameraObject, waitingScene);
         }
         lobbyCamera.transform.position = origin + cameraOffset;
         lobbyCamera.transform.LookAt(origin + cameraLookOffset);
