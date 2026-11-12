@@ -89,7 +89,7 @@ public class GameManager : NetworkBehaviour
 		if (IsServer)
 		{
 			if (_gameStarted)
-				EndGame();
+				EndGame(grantRewards: false);
 		}
 		else
 		{
@@ -104,7 +104,7 @@ public class GameManager : NetworkBehaviour
 			return;
 
 		// Returning to the waiting room ends the current shared round for everyone.
-		EndGame();
+		EndGame(grantRewards: false);
 	}
 
 	public void SetLocalReady(bool ready)
@@ -500,7 +500,7 @@ public class GameManager : NetworkBehaviour
 			puzzles[i].ResetForNewMatch();
 	}
 
-	private void EndGame()
+	private void EndGame(bool grantRewards = true)
 	{
 		if (!IsServer || NetworkManager.Singleton == null)
 			return;
@@ -510,8 +510,11 @@ public class GameManager : NetworkBehaviour
 		_eliminatedClients.Clear();
 		_readyClients.Clear();
 		ResetRoundProgression();
-		GrantMatchCreditsClientRpc(100);
-		GrantMatchTicketsClientRpc(1);
+		if (grantRewards)
+		{
+			GrantMatchCreditsClientRpc(100);
+			GrantMatchTicketsClientRpc(1);
+		}
 		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
 			spawnedAiMonster.Despawn(true);
 		spawnedAiMonster = null;
