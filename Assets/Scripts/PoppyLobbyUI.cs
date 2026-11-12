@@ -32,6 +32,8 @@ public class PoppyLobbyUI : MonoBehaviour
         if (gameManager == null) gameManager = FindObjectOfType<GameManager>();
         if (connectionManager == null) connectionManager = FindObjectOfType<ConnectionManafer>();
         if (roomBuilder == null) roomBuilder = FindObjectOfType<PoppyLobbyRoomBuilder>();
+        if (connectionManager != null && connectionManager.canvas2 != null)
+            connectionManager.canvas2.SetActive(false);
         BuildUI();
         SetVisible(false, false);
     }
