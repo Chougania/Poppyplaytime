@@ -506,7 +506,9 @@ public class PoppyMainMenu : MonoBehaviour
             return;
         }
 
-        ConnectionManafer.PlayerName = playerNameInput.text.Trim();
+        ConnectionManafer.PlayerName = playerNameInput != null && !string.IsNullOrWhiteSpace(playerNameInput.text)
+            ? playerNameInput.text.Trim()
+            : "Player";
         connectionManager.HostAServer();
     }
 
@@ -518,9 +520,11 @@ public class PoppyMainMenu : MonoBehaviour
             return;
         }
 
-        ConnectionManafer.PlayerName = playerNameInput.text.Trim();
+        ConnectionManafer.PlayerName = playerNameInput != null && !string.IsNullOrWhiteSpace(playerNameInput.text)
+            ? playerNameInput.text.Trim()
+            : "Player";
         connectionManager.codeInputField = joinCodeInput;
-        if (string.IsNullOrWhiteSpace(joinCodeInput.text))
+        if (joinCodeInput == null || string.IsNullOrWhiteSpace(joinCodeInput.text))
             connectionManager.JoinRandomServer();
         else
             connectionManager.JoinWithCode();
