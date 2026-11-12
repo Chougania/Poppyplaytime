@@ -27,6 +27,7 @@ public class PoppyMainMenu : MonoBehaviour
     private TMP_InputField playerNameInput;
     private TextMeshProUGUI modeLabel;
     private TextMeshProUGUI difficultyLabel;
+    private TextMeshProUGUI walletLabel;
     private GameObject shopPanel;
     private TextMeshProUGUI shopCreditsLabel;
     private TextMeshProUGUI shopStatusLabel;
@@ -54,6 +55,9 @@ public class PoppyMainMenu : MonoBehaviour
             BuildCreepyCorridor();
 
         BuildInterface();
+        PoppyUIInputGate.SetMenuOpen(true);
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
         ApplyPreviewSkin();
     }
 
@@ -63,6 +67,7 @@ public class PoppyMainMenu : MonoBehaviour
             connectionManager.networkManager.IsListening && menuCanvas != null && menuCanvas.gameObject.activeSelf)
         {
             menuCanvas.gameObject.SetActive(false);
+            PoppyUIInputGate.SetMenuOpen(false);
             if (corridorRoot != null)
                 corridorRoot.gameObject.SetActive(false);
             if (characterPreview != null && characterPreview.name == "PoppyMenu_PlayerPreview")
@@ -79,6 +84,8 @@ public class PoppyMainMenu : MonoBehaviour
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
+        if (walletLabel != null)
+            walletLabel.text = "CREDITS  " + PoppyShop.Credits + "      ★ TICKETS  " + PoppyShop.Tickets;
     }
 
     private void BuildCreepyCorridor()
@@ -244,6 +251,14 @@ public class PoppyMainMenu : MonoBehaviour
 
         CreatePanel("Left menu glass", menuCanvas.transform, new Vector2(0.035f, 0.08f),
             new Vector2(0.39f, 0.92f), new Color(0.012f, 0.018f, 0.024f, 0.88f));
+
+        CreateText("Creator credit", menuCanvas.transform, "CREATED BY CHOUGAN2",
+            14, new Vector2(0.055f, 0.935f), new Vector2(0.35f, 0.975f),
+            TextAlignmentOptions.Left, new Color(1f, 0.48f, 0.2f));
+        walletLabel = CreateText("Wallet", menuCanvas.transform, "",
+            17, new Vector2(0.62f, 0.92f), new Vector2(0.97f, 0.975f),
+            TextAlignmentOptions.Right, new Color(1f, 0.78f, 0.24f));
+        walletLabel.text = "CREDITS  " + PoppyShop.Credits + "      ★ TICKETS  " + PoppyShop.Tickets;
 
         CreateText("Poppy title", menuCanvas.transform, "PROJECT PLAYTIME\nREMADE",
             48, new Vector2(0.055f, 0.72f), new Vector2(0.34f, 0.18f),
@@ -425,14 +440,20 @@ public class PoppyMainMenu : MonoBehaviour
     private void OpenShop()
     {
         isShopOpen = true;
+        PoppyUIInputGate.SetShopOpen(true);
         shopPanel.SetActive(true);
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
         RefreshShop();
     }
 
     private void CloseShop()
     {
         isShopOpen = false;
+        PoppyUIInputGate.SetShopOpen(false);
         shopPanel.SetActive(false);
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
     }
 
     private void StartSoloAI()
