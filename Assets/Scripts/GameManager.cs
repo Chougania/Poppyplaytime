@@ -268,10 +268,11 @@ public class GameManager : NetworkBehaviour
 			{
 				component.survivorModelContainer.SetActive(isSurvivor);
 			}
-			if (component.monsterModelContainer != null)
+ 			if (component.monsterModelContainer != null)
 			{
 				component.monsterModelContainer.SetActive(isMonster);
 			}
+			component.RefreshSkinColor();
 			if (component.deadModelContainer != null)
 			{
 				component.deadModelContainer.SetActive(value: false);
