@@ -44,6 +44,7 @@ public class GameManager : NetworkBehaviour
 
 	public bool IsGameStarted => _netGameStarted.Value;
 	public bool IsClientReady(ulong clientId) => _readyClients.Contains(clientId);
+	public bool IsClientEliminated(ulong clientId) => _eliminatedClients.Contains(clientId);
 
 	public bool CanStartMatch
 	{
