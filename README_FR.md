@@ -74,6 +74,13 @@ En mode AI, GameManager fait apparaître `aiMonsterPrefab` et tous les joueurs h
 
 L'IA patrouille, détecte les survivants dans son champ de vision, poursuit leur dernière position connue, recherche puis déclenche une attaque à courte portée. Le serveur est responsable de son déplacement et de la validation de l'élimination.
 
+### Nouveautés : skins de monstres et difficulté IA
+- **6 apparences Huggy** dans la boutique : Classic, Nightmare, Toxic Experiment, Frostbite, Shadow Huggy et Molten Prototype.
+- Les skins de monstres utilisent les crédits de la boutique, sont sauvegardés localement et le choix de l'hôte est répliqué aux clients lorsque Huggy IA apparaît.
+- **3 difficultés IA** accessibles depuis le menu : Easy (vision et vitesse réduites, attaques moins fréquentes), Normal et Nightmare (vision et vitesse augmentées, attaques plus rapprochées).
+- La boutique présente maintenant les couleurs de joueur et les skins de monstres dans deux colonnes distinctes.
+- Les skins sont des variantes de teinte du modèle Huggy déjà présent : pour obtenir des monstres avec des silhouettes, accessoires ou animations réellement différents, il faudra ajouter des modèles 3D et les configurer dans Unity.
+
 ### Correctifs complémentaires (revue statique)
 - La détection visuelle de Huggy examine désormais les collisions sans supposer que les Raycast sont triés, et réutilise un tampon de résultats pour limiter les allocations répétées.
 - Lorsqu'un survivant disparaît de la vue, Huggy conserve sa dernière position réellement observée au lieu de lire sa position à travers les murs.
