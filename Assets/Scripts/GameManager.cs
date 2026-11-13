@@ -195,28 +195,10 @@ public class GameManager : NetworkBehaviour
 			return;
 		}
 
-		bool canStartMatch = CanStartMatch;
-
-		if (canStartMatch)
-		{
-			if (hostStartPromptUI != null && !hostStartPromptUI.activeSelf)
-			{
-				hostStartPromptUI.SetActive(value: true);
-			}
-			if (!PoppyUIInputGate.IsGameplayBlocked &&
-				(Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
-			{
-				if (hostStartPromptUI != null)
-				{
-					hostStartPromptUI.SetActive(value: false);
-				}
-				StartCoroutine(StartGameLoop());
-			}
-		}
-		else if (hostStartPromptUI != null && hostStartPromptUI.activeSelf)
-		{
-			hostStartPromptUI.SetActive(value: false);
-		}
+		// Match start is handled by PoppyLobbyUI with the O key or its button.
+		// The server no longer starts a round automatically with Enter.
+		if (hostStartPromptUI != null && hostStartPromptUI.activeSelf)
+			hostStartPromptUI.SetActive(false);
 	}
 
 	private void OnClientConnected(ulong clientId)
