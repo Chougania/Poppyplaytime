@@ -12,7 +12,7 @@ public class PlayerCameraToggle : NetworkBehaviour
 
 	[Header("Settings")]
 	[SerializeField]
-	private bool startInFirstPerson = true;
+	private bool startInFirstPerson = false;
 
 	private bool isFirstPerson;
 
