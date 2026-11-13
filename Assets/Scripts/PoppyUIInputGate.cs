@@ -46,7 +46,6 @@ public static class PoppyUIInputGate
 
     public static bool ShouldBlockGameplayMouse()
     {
-        return menuOpen || pauseOpen || shopOpen ||
-            Cursor.lockState != CursorLockMode.Locked || IsPointerOverUI();
+        return menuOpen || pauseOpen || shopOpen || IsPointerOverUI();
     }
 }
