@@ -13,7 +13,7 @@ public class PlayerCameraSetup : NetworkBehaviour
 
 	[Header("Starting Perspectives")]
 	[SerializeField]
-	private bool startInFirstPerson = true;
+	private bool startInFirstPerson = false;
 
 	[SerializeField]
 	private bool startOnRightShoulder = true;
