@@ -56,6 +56,13 @@ public class PoppyLobbyUI : MonoBehaviour
 
         if (gameManager == null) gameManager = FindObjectOfType<GameManager>();
         bool inMatch = gameManager != null && gameManager.IsGameStarted;
+        // Automatically launch AI mode when the host is alone; no second player or ready click is needed.
+        if (!inMatch && net.IsHost && gameManager != null &&
+            PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 &&
+            net.ConnectedClientsList.Count == 1)
+        {
+            gameManager.TryStartSoloMatchFromLobby();
+        }
         if (inMatch != wasInMatch)
         {
             wasInMatch = inMatch;
