@@ -406,7 +406,8 @@ public class PoppyMainMenu : MonoBehaviour
             new Vector2(0.035f, 0.895f), new Vector2(0.42f, 0.925f), TextAlignmentOptions.Left, new Color(0.55f, 0.62f, 0.69f));
 
         mainPanel = CreatePanel("Main menu panel", menuCanvas.transform,
-            new Vector2(0.035f, 0.12f), new Vector2(0.43f, 0.89f), new Color(0.008f, 0.014f, 0.021f, 0.88f));
+            new Vector2(0.035f, 0.12f), new Vector2(0.43f, 0.89f), new Color(0.008f, 0.014f, 0.021f, 0.92f));
+        CreatePanel("Factory red accent", mainPanel.transform, new Vector2(0.025f, 0.02f), new Vector2(0.04f, 0.98f), new Color(0.78f, 0.075f, 0.035f, 1f));
         CreateText("Main title", mainPanel.transform, "PROJECT\nPLAYTIME", 52,
             new Vector2(0.08f, 0.69f), new Vector2(0.92f, 0.94f), TextAlignmentOptions.Left, Color.white);
         CreateText("Main subtitle", mainPanel.transform, "A TOY FACTORY. A TERRIBLE SECRET.", 15,
@@ -430,7 +431,7 @@ public class PoppyMainMenu : MonoBehaviour
         CreateButton("Browse rooms", mainPanel.transform, "▦   BROWSE PUBLIC MATCHES",
             new Vector2(0.08f, 0.075f), new Vector2(0.92f, 0.15f), OpenRoomBrowser, true);
         statusLabel = CreateText("Menu status", mainPanel.transform, "SELECT A MODE  •  CREATED BY CHOUGAN2",
-            12, new Vector2(0.08f, 0.035f), new Vector2(0.92f, 0.105f), TextAlignmentOptions.Left, new Color(0.58f, 0.64f, 0.7f));
+            11, new Vector2(0.08f, 0.015f), new Vector2(0.92f, 0.055f), TextAlignmentOptions.Left, new Color(0.58f, 0.64f, 0.7f));
 
         BuildShopPanel();
         BuildMonsterPanel();
