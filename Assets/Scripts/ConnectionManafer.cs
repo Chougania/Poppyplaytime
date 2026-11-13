@@ -260,7 +260,7 @@ public class ConnectionManafer : MonoBehaviour
 			QueryLobbiesOptions query = new QueryLobbiesOptions
 			{
 				Count = 20,
-				Filters = new List<QueryFilter> { new QueryFilter(QueryFilter.FieldOptions.AvailableSlots, QueryFilter.OpOptions.GT, "0") }
+				Filters = new List<QueryFilter> { new QueryFilter(QueryFilter.FieldOptions.AvailableSlots, "0", QueryFilter.OpOptions.GT) }
 			};
 			QueryResponse response = await LobbyService.Instance.QueryLobbiesAsync(query);
 			onComplete?.Invoke(response.Results ?? new List<Lobby>());
