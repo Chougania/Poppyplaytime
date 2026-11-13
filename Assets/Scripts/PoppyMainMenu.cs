@@ -103,8 +103,9 @@ public class PoppyMainMenu : MonoBehaviour
             if (characterPreview != null) characterPreview.gameObject.SetActive(false);
             if (huggyPreview != null) huggyPreview.gameObject.SetActive(false);
             if (menuCamera != null) menuCamera.enabled = false;
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            bool waitingForPlayers = PoppyUIInputGate.IsLobbyOpen;
+            Cursor.lockState = waitingForPlayers ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.visible = waitingForPlayers;
             return;
         }
 
@@ -395,13 +396,15 @@ public class PoppyMainMenu : MonoBehaviour
         walletLabel = CreateText("Wallet", menuCanvas.transform, "", 18,
             new Vector2(0.72f, 0.925f), new Vector2(0.98f, 0.98f), TextAlignmentOptions.Right, new Color(1f, 0.78f, 0.3f));
         CreateText("Creator credit", menuCanvas.transform, "CREATED BY CHOUGAN2", 14,
+        CreateText("Build label", menuCanvas.transform, "PLAYTIME CO.  //  MULTIPLAYER EXPERIMENT", 11,
+            new Vector2(0.035f, 0.895f), new Vector2(0.42f, 0.925f), TextAlignmentOptions.Left, new Color(0.55f, 0.62f, 0.69f));
             new Vector2(0.035f, 0.93f), new Vector2(0.34f, 0.975f), TextAlignmentOptions.Left, new Color(1f, 0.48f, 0.24f));
 
         mainPanel = CreatePanel("Main menu panel", menuCanvas.transform,
             new Vector2(0.035f, 0.12f), new Vector2(0.43f, 0.89f), new Color(0.008f, 0.014f, 0.021f, 0.88f));
         CreateText("Main title", mainPanel.transform, "PROJECT\nPLAYTIME", 52,
             new Vector2(0.08f, 0.69f), new Vector2(0.92f, 0.94f), TextAlignmentOptions.Left, Color.white);
-        CreateText("Main subtitle", mainPanel.transform, "REMADE  /  MULTIPLAYER HORROR", 15,
+        CreateText("Main subtitle", mainPanel.transform, "A TOY FACTORY. A TERRIBLE SECRET.", 15,
             new Vector2(0.08f, 0.64f), new Vector2(0.92f, 0.7f), TextAlignmentOptions.Left, new Color(1f, 0.27f, 0.18f));
 
         playerNameInput = CreateInput("Player name", mainPanel.transform, "PLAYER NAME",
@@ -409,7 +412,7 @@ public class PoppyMainMenu : MonoBehaviour
         joinCodeInput = CreateInput("Join code", mainPanel.transform, "RELAY CODE (OPTIONAL)",
             new Vector2(0.08f, 0.46f), new Vector2(0.92f, 0.53f));
 
-        CreateButton("Play", mainPanel.transform, "▶   PLAY  /  SOLO AI     [ENTER]",
+        CreateButton("Play", mainPanel.transform, "▶   PLAY SOLO  •  HUGGY AI",
             new Vector2(0.08f, 0.35f), new Vector2(0.92f, 0.435f), StartSoloAI, true);
         CreateButton("Host", mainPanel.transform, "CREATE ONLINE ROOM",
             new Vector2(0.08f, 0.245f), new Vector2(0.50f, 0.325f), HostSession, false);
@@ -419,7 +422,7 @@ public class PoppyMainMenu : MonoBehaviour
             new Vector2(0.08f, 0.135f), new Vector2(0.50f, 0.22f), OpenMonsterSelection, false);
         CreateButton("Shop", mainPanel.transform, "SHOP",
             new Vector2(0.54f, 0.135f), new Vector2(0.92f, 0.22f), OpenShop, false);
-        statusLabel = CreateText("Menu status", mainPanel.transform, "PRESS ENTER TO START  •  ESC TO RETURN",
+        statusLabel = CreateText("Menu status", mainPanel.transform, "SELECT A MODE  •  CREATED BY CHOUGAN2",
             12, new Vector2(0.08f, 0.035f), new Vector2(0.92f, 0.105f), TextAlignmentOptions.Left, new Color(0.58f, 0.64f, 0.7f));
 
         BuildShopPanel();
