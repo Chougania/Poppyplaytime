@@ -19,7 +19,12 @@ public static class PoppyUIInputGate
     }
 
     public static bool IsBlocked => menuOpen || lobbyOpen || pauseOpen || shopOpen;
-    public static bool IsGameplayBlocked => IsBlocked || Cursor.lockState != CursorLockMode.Locked || IsPointerOverUI();
+    public static bool IsLobbyOpen => lobbyOpen;
+
+    // The lobby is a playable staging area: movement is enabled there,
+    // while UI pointer clicks are still protected from gameplay actions.
+    public static bool IsGameplayBlocked =>
+        menuOpen || pauseOpen || shopOpen || IsPointerOverUI();
 
     public static void SetMenuOpen(bool value) { menuOpen = value; }
     public static void SetLobbyOpen(bool value) { lobbyOpen = value; }
@@ -41,6 +46,7 @@ public static class PoppyUIInputGate
 
     public static bool ShouldBlockGameplayMouse()
     {
-        return IsBlocked || IsPointerOverUI() || Cursor.lockState != CursorLockMode.Locked;
+        return menuOpen || pauseOpen || shopOpen ||
+            Cursor.lockState != CursorLockMode.Locked || IsPointerOverUI();
     }
 }
