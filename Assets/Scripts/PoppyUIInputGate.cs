@@ -24,7 +24,7 @@ public static class PoppyUIInputGate
     // The lobby is a playable staging area: movement is enabled there,
     // while UI pointer clicks are still protected from gameplay actions.
     public static bool IsGameplayBlocked =>
-        menuOpen || pauseOpen || shopOpen || IsPointerOverUI();
+        menuOpen || lobbyOpen || pauseOpen || shopOpen || IsPointerOverUI();
 
     public static void SetMenuOpen(bool value) { menuOpen = value; }
     public static void SetLobbyOpen(bool value) { lobbyOpen = value; }
@@ -46,6 +46,6 @@ public static class PoppyUIInputGate
 
     public static bool ShouldBlockGameplayMouse()
     {
-        return menuOpen || pauseOpen || shopOpen || IsPointerOverUI();
+        return menuOpen || lobbyOpen || pauseOpen || shopOpen || IsPointerOverUI();
     }
 }
