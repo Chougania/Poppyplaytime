@@ -139,6 +139,16 @@ public class PoppyMainMenu : MonoBehaviour
             ReturnToMainView();
     }
 
+    // Keep the default menu camera perfectly still even if another component or
+    // an animated parent tries to rotate it. Shop/monster camera transitions remain intact.
+    private void LateUpdate()
+    {
+        if (wasConnectedToSession || isTransitioning || currentView != MenuView.Main || menuCamera == null)
+            return;
+
+        menuCamera.transform.rotation = mainCameraRotation;
+    }
+
     private void BuildFactoryShowroom()
     {
         if (menuCamera == null)
