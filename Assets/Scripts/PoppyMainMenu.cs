@@ -24,7 +24,7 @@ public class PoppyMainMenu : MonoBehaviour
 
     [Header("Camera transitions")]
     [Min(0.1f)] public float cameraTransitionDuration = 0.75f;
-    [Min(0f)] public float showroomAutoRotateSpeed = 12f;
+    [Min(0f)] public float showroomAutoRotateSpeed = 0f;
     [Min(0f)] public float mouseRotateSensitivity = 0.22f;
 
     private enum MenuView { Main, Shop, Monsters }
@@ -349,7 +349,6 @@ public class PoppyMainMenu : MonoBehaviour
         }
         else if (!Input.GetMouseButton(0))
         {
-            characterPreview.Rotate(Vector3.up, showroomAutoRotateSpeed * Time.unscaledDeltaTime, Space.World);
         }
     }
 
@@ -368,7 +367,6 @@ public class PoppyMainMenu : MonoBehaviour
         }
         else if (!Input.GetMouseButton(0))
         {
-            huggyPreview.Rotate(Vector3.up, showroomAutoRotateSpeed * Time.unscaledDeltaTime, Space.World);
         }
     }
 
