@@ -76,7 +76,7 @@ public class PoppyLobbyUI : MonoBehaviour
 
         if (!inMatch)
         {
-            if (Input.GetKeyDown(KeyCode.P)) ToggleReady();
+            if (Input.GetKeyDown(KeyCode.P) || Input.GetKeyDown(KeyCode.R)) ToggleReady();
             if (net.IsHost && Input.GetKeyDown(KeyCode.O)) StartMatch();
         }
 
@@ -152,10 +152,10 @@ public class PoppyLobbyUI : MonoBehaviour
         layout.childControlHeight = true;
         layout.childForceExpandHeight = false;
 
-        Label("P  •  SE DÉCLARER PRÊT     O  •  LANCER (HÔTE)", panel.transform,
+        Label("P / R  •  SE DÉCLARER PRÊT     O  •  LANCER (HÔTE)", panel.transform,
             new Vector2(0.07f, 0.035f), new Vector2(0.93f, 0.095f), 13, new Color(0.72f, 0.78f, 0.84f));
 
-        readyButton = ButtonUI("READY BUTTON", panel.transform, "P  •  JE SUIS PRÊT",
+        readyButton = ButtonUI("READY BUTTON", panel.transform, "P / R  •  JE SUIS PRÊT",
             new Vector2(0.07f, 0.12f), new Vector2(0.48f, 0.22f), ToggleReady);
         startButton = ButtonUI("START BUTTON", panel.transform, "O  •  LANCER LA PARTIE",
             new Vector2(0.52f, 0.12f), new Vector2(0.93f, 0.22f), StartMatch);
@@ -190,7 +190,7 @@ public class PoppyLobbyUI : MonoBehaviour
         if (readyButton != null)
         {
             TMP_Text label = readyButton.GetComponentInChildren<TMP_Text>();
-            if (label != null) label.text = localReady ? "P  •  ANNULER PRÊT" : "P  •  JE SUIS PRÊT";
+            if (label != null) label.text = localReady ? "P / R  •  ANNULER PRÊT" : "P / R  •  JE SUIS PRÊT";
         }
     }
 
