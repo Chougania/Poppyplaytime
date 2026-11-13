@@ -3,6 +3,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using Unity.Services.Lobbies.Models;
 
 /// <summary>
 /// Cinematic runtime front-end: static hero composition, camera-driven shop and monster
@@ -27,7 +28,7 @@ public class PoppyMainMenu : MonoBehaviour
     [Min(0f)] public float showroomAutoRotateSpeed = 0f;
     [Min(0f)] public float mouseRotateSensitivity = 0.22f;
 
-    private enum MenuView { Main, Shop, Monsters }
+    private enum MenuView { Main, Shop, Monsters, Rooms }
     private MenuView currentView = MenuView.Main;
     private Canvas menuCanvas;
     private TMP_InputField playerNameInput;
@@ -42,6 +43,10 @@ public class PoppyMainMenu : MonoBehaviour
     private GameObject mainPanel;
     private GameObject shopPanel;
     private GameObject monsterPanel;
+    private GameObject roomsPanel;
+    private Transform roomsListRoot;
+    private TextMeshProUGUI roomsStatusLabel;
+    private bool roomsRequestPending;
     private Transform environmentRoot;
     private Transform playerStand;
     private Transform[] monsterBoxes = new Transform[3];
@@ -396,9 +401,9 @@ public class PoppyMainMenu : MonoBehaviour
         walletLabel = CreateText("Wallet", menuCanvas.transform, "", 18,
             new Vector2(0.72f, 0.925f), new Vector2(0.98f, 0.98f), TextAlignmentOptions.Right, new Color(1f, 0.78f, 0.3f));
         CreateText("Creator credit", menuCanvas.transform, "CREATED BY CHOUGAN2", 14,
+            new Vector2(0.035f, 0.93f), new Vector2(0.34f, 0.975f), TextAlignmentOptions.Left, new Color(1f, 0.48f, 0.24f));
         CreateText("Build label", menuCanvas.transform, "PLAYTIME CO.  //  MULTIPLAYER EXPERIMENT", 11,
             new Vector2(0.035f, 0.895f), new Vector2(0.42f, 0.925f), TextAlignmentOptions.Left, new Color(0.55f, 0.62f, 0.69f));
-            new Vector2(0.035f, 0.93f), new Vector2(0.34f, 0.975f), TextAlignmentOptions.Left, new Color(1f, 0.48f, 0.24f));
 
         mainPanel = CreatePanel("Main menu panel", menuCanvas.transform,
             new Vector2(0.035f, 0.12f), new Vector2(0.43f, 0.89f), new Color(0.008f, 0.014f, 0.021f, 0.88f));
@@ -419,14 +424,17 @@ public class PoppyMainMenu : MonoBehaviour
         CreateButton("Join", mainPanel.transform, "JOIN ROOM",
             new Vector2(0.54f, 0.245f), new Vector2(0.92f, 0.325f), JoinSession, false);
         CreateButton("Monsters", mainPanel.transform, "MONSTERS",
-            new Vector2(0.08f, 0.135f), new Vector2(0.50f, 0.22f), OpenMonsterSelection, false);
+            new Vector2(0.08f, 0.17f), new Vector2(0.50f, 0.25f), OpenMonsterSelection, false);
         CreateButton("Shop", mainPanel.transform, "SHOP",
-            new Vector2(0.54f, 0.135f), new Vector2(0.92f, 0.22f), OpenShop, false);
+            new Vector2(0.54f, 0.17f), new Vector2(0.92f, 0.25f), OpenShop, false);
+        CreateButton("Browse rooms", mainPanel.transform, "▦   BROWSE PUBLIC MATCHES",
+            new Vector2(0.08f, 0.075f), new Vector2(0.92f, 0.15f), OpenRoomBrowser, true);
         statusLabel = CreateText("Menu status", mainPanel.transform, "SELECT A MODE  •  CREATED BY CHOUGAN2",
             12, new Vector2(0.08f, 0.035f), new Vector2(0.92f, 0.105f), TextAlignmentOptions.Left, new Color(0.58f, 0.64f, 0.7f));
 
         BuildShopPanel();
         BuildMonsterPanel();
+        BuildRoomsPanel();
         if (connectionManager != null)
         {
             connectionManager.nameInputField = playerNameInput;
@@ -487,6 +495,78 @@ public class PoppyMainMenu : MonoBehaviour
         monsterPanel.SetActive(false);
     }
 
+
+    private void BuildRoomsPanel()
+    {
+        roomsPanel = CreatePanel("Public rooms panel", menuCanvas.transform,
+            new Vector2(0.035f, 0.12f), new Vector2(0.43f, 0.89f), new Color(0.008f, 0.014f, 0.021f, 0.96f));
+        CreateText("Rooms title", roomsPanel.transform, "PUBLIC MATCHES", 38,
+            new Vector2(0.08f, 0.84f), new Vector2(0.92f, 0.96f), TextAlignmentOptions.Left, Color.white);
+        CreateText("Rooms subtitle", roomsPanel.transform, "FIND A CREW. ENTER THE FACTORY.", 13,
+            new Vector2(0.08f, 0.79f), new Vector2(0.92f, 0.85f), TextAlignmentOptions.Left, new Color(1f, 0.32f, 0.2f));
+        roomsStatusLabel = CreateText("Rooms status", roomsPanel.transform, "PRESS REFRESH TO SEARCH", 13,
+            new Vector2(0.08f, 0.73f), new Vector2(0.92f, 0.78f), TextAlignmentOptions.Left, new Color(0.65f, 0.75f, 0.82f));
+        GameObject list = new GameObject("Public room list", typeof(RectTransform), typeof(VerticalLayoutGroup));
+        list.transform.SetParent(roomsPanel.transform, false);
+        roomsListRoot = list.transform;
+        RectTransform listRect = list.GetComponent<RectTransform>();
+        listRect.anchorMin = new Vector2(0.08f, 0.20f); listRect.anchorMax = new Vector2(0.92f, 0.71f);
+        listRect.offsetMin = Vector2.zero; listRect.offsetMax = Vector2.zero;
+        VerticalLayoutGroup layout = list.GetComponent<VerticalLayoutGroup>();
+        layout.spacing = 9; layout.childControlHeight = true; layout.childForceExpandHeight = false;
+        CreateButton("Refresh rooms", roomsPanel.transform, "REFRESH LIST",
+            new Vector2(0.08f, 0.105f), new Vector2(0.48f, 0.18f), RefreshPublicRooms, true);
+        CreateButton("Rooms back", roomsPanel.transform, "BACK",
+            new Vector2(0.52f, 0.105f), new Vector2(0.92f, 0.18f), ReturnToMainView, false);
+        roomsPanel.SetActive(false);
+    }
+
+    private void OpenRoomBrowser()
+    {
+        if (isTransitioning) return;
+        currentView = MenuView.Rooms;
+        mainPanel.SetActive(false); shopPanel.SetActive(false); monsterPanel.SetActive(false); roomsPanel.SetActive(true);
+        PoppyUIInputGate.SetShopOpen(false); PoppyUIInputGate.SetMenuOpen(true);
+        Cursor.lockState = CursorLockMode.None; Cursor.visible = true;
+        RefreshPublicRooms();
+    }
+
+    private void RefreshPublicRooms()
+    {
+        if (connectionManager == null || roomsRequestPending) return;
+        roomsRequestPending = true;
+        roomsStatusLabel.text = "SEARCHING FOR AVAILABLE ROOMS...";
+        foreach (Transform child in roomsListRoot) Destroy(child.gameObject);
+        connectionManager.RefreshPublicLobbies(delegate(List<Lobby> rooms)
+        {
+            roomsRequestPending = false;
+            if (roomsPanel == null || !roomsPanel.activeSelf) return;
+            foreach (Transform child in roomsListRoot) Destroy(child.gameObject);
+            if (rooms == null || rooms.Count == 0) { roomsStatusLabel.text = "NO PUBLIC ROOMS FOUND  •  TRY AGAIN"; return; }
+            roomsStatusLabel.text = rooms.Count + " AVAILABLE ROOM(S)";
+            for (int i = 0; i < Mathf.Min(rooms.Count, 5); i++)
+            {
+                Lobby room = rooms[i];
+                string mode = room.Data != null && room.Data.ContainsKey("GameMode") ? room.Data["GameMode"].Value : "STANDARD";
+                int playerCount = room.Players != null ? room.Players.Count : 0;
+                string details = room.Name + "\\n" + mode + "  •  " + playerCount + "/" + room.MaxPlayers + " PLAYERS";
+                Button join = CreateButton("Room " + i, roomsListRoot, details, Vector2.zero, Vector2.one,
+                    delegate { JoinListedRoom(room); }, false);
+                LayoutElement element = join.gameObject.AddComponent<LayoutElement>();
+                element.minHeight = 76f; element.preferredHeight = 76f;
+            }
+        });
+    }
+
+    private void JoinListedRoom(Lobby room)
+    {
+        if (connectionManager == null || room == null) return;
+        SavePlayerName();
+        PlayerPrefs.SetInt("Poppy.EnemyMode", 0); PlayerPrefs.Save();
+        roomsStatusLabel.text = "CONNECTING TO " + room.Name.ToUpper() + "...";
+        connectionManager.JoinPublicLobby(room);
+    }
+
     private void OpenShop()
     {
         if (currentView == MenuView.Shop || isTransitioning) return;
@@ -494,6 +574,7 @@ public class PoppyMainMenu : MonoBehaviour
         mainPanel.SetActive(false);
         monsterPanel.SetActive(false);
         shopPanel.SetActive(true);
+        roomsPanel.SetActive(false);
         PoppyUIInputGate.SetShopOpen(true);
         PoppyUIInputGate.SetMenuOpen(false);
         Cursor.lockState = CursorLockMode.None;
@@ -509,6 +590,7 @@ public class PoppyMainMenu : MonoBehaviour
         mainPanel.SetActive(false);
         shopPanel.SetActive(false);
         monsterPanel.SetActive(true);
+        roomsPanel.SetActive(false);
         selectedMonsterIndex = PoppyMonsterShop.SelectedSkin;
         PoppyUIInputGate.SetShopOpen(true);
         PoppyUIInputGate.SetMenuOpen(false);
@@ -525,6 +607,7 @@ public class PoppyMainMenu : MonoBehaviour
         currentView = MenuView.Main;
         shopPanel.SetActive(false);
         monsterPanel.SetActive(false);
+        roomsPanel.SetActive(false);
         mainPanel.SetActive(true);
         PoppyUIInputGate.SetShopOpen(false);
         PoppyUIInputGate.SetMenuOpen(true);
@@ -546,6 +629,7 @@ public class PoppyMainMenu : MonoBehaviour
         if (mainPanel != null) mainPanel.SetActive(true);
         if (shopPanel != null) shopPanel.SetActive(false);
         if (monsterPanel != null) monsterPanel.SetActive(false);
+        if (roomsPanel != null) roomsPanel.SetActive(false);
         if (huggyPreview != null) huggyPreview.gameObject.SetActive(false);
         if (PoppyUIInputGate.IsBlocked) PoppyUIInputGate.Clear();
         PoppyUIInputGate.SetMenuOpen(true);
