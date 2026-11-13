@@ -72,8 +72,7 @@ public class PoppyMainMenu : MonoBehaviour
     private void Start()
     {
         if (menuCamera == null) menuCamera = Camera.main;
-        // Keep the menu camera independent from animated/player rigs.
-        if (menuCamera != null) menuCamera.transform.SetParent(null, true);
+        // Keep the camera under its authored rig; world-space locking below prevents drift.
         if (connectionManager == null) connectionManager = FindObjectOfType<ConnectionManafer>();
 
         if (connectionManager != null)
@@ -83,8 +82,10 @@ public class PoppyMainMenu : MonoBehaviour
             if (playerNameInput != null) connectionManager.nameInputField = playerNameInput;
         }
 
-        // No scene geometry is generated here: the level and showroom are authored in Unity.
         BuildInterface();
+        // Create the player turntable and the three monster containment displays.
+        // These were previously never built, leaving the shop/monster previews without containers.
+        BuildFactoryShowroom();
         CacheCameraShots();
         PrepareCharacterPreview();
         PrepareMonsterPreview();
@@ -151,10 +152,10 @@ public class PoppyMainMenu : MonoBehaviour
     // an animated parent tries to rotate it. Shop/monster camera transitions remain intact.
     private void LateUpdate()
     {
-        if (wasConnectedToSession || isTransitioning || currentView != MenuView.Main || menuCamera == null)
+        if (wasConnectedToSession || isTransitioning || menuCamera == null)
             return;
 
-        if (currentView == MenuView.Main)
+        if (currentView == MenuView.Main || currentView == MenuView.Rooms)
         {
             menuCamera.transform.position = mainCameraPosition;
             menuCamera.transform.rotation = mainCameraRotation;
