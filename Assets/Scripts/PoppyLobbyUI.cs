@@ -5,15 +5,14 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Runtime lobby overlay: player roster, ready state, host start and match status.
-/// Attach to a scene object in the Lobby scene, or let PoppyMenuBootstrap create it.
+/// Lightweight multiplayer waiting overlay. All 3D waiting-room content is authored manually in Unity.
+/// P toggles ready; O starts the match for the host.
 /// </summary>
 public class PoppyLobbyUI : MonoBehaviour
 {
     [Header("References")]
     public GameManager gameManager;
     public ConnectionManafer connectionManager;
-    public PoppyLobbyRoomBuilder roomBuilder;
 
     private Canvas canvas;
     private RectTransform rosterRoot;
@@ -32,7 +31,6 @@ public class PoppyLobbyUI : MonoBehaviour
     {
         if (gameManager == null) gameManager = FindObjectOfType<GameManager>();
         if (connectionManager == null) connectionManager = FindObjectOfType<ConnectionManafer>();
-        if (roomBuilder == null) roomBuilder = FindObjectOfType<PoppyLobbyRoomBuilder>();
         if (connectionManager != null && connectionManager.canvas2 != null)
             connectionManager.canvas2.SetActive(false);
         BuildUI();
@@ -52,12 +50,6 @@ public class PoppyLobbyUI : MonoBehaviour
         if (!connected)
         {
             if (isVisible) SetVisible(false, false);
-            if (roomBuilder != null && roomBuilder.lobbyCamera != null)
-            {
-                roomBuilder.lobbyCamera.enabled = false;
-                AudioListener lobbyListener = roomBuilder.lobbyCamera.GetComponent<AudioListener>();
-                if (lobbyListener != null) lobbyListener.enabled = false;
-            }
             return;
         }
 
@@ -77,10 +69,15 @@ public class PoppyLobbyUI : MonoBehaviour
         if (shouldShow != isVisible)
             SetVisible(shouldShow, true);
 
-        ApplyLobbyCamera(shouldShow);
 
         if (!isVisible)
             return;
+
+        if (!inMatch)
+        {
+            if (Input.GetKeyDown(KeyCode.P)) ToggleReady();
+            if (net.IsHost && Input.GetKeyDown(KeyCode.O)) StartMatch();
+        }
 
         rosterRefreshTimer -= Time.unscaledDeltaTime;
         if (rosterRefreshTimer <= 0f)
@@ -122,7 +119,7 @@ public class PoppyLobbyUI : MonoBehaviour
 
         GameObject panel = Panel("Lobby glass panel", root.transform, new Vector2(0.62f, 0.12f), new Vector2(0.97f, 0.88f),
             new Color(0.018f, 0.025f, 0.035f, 0.96f));
-        Label("LOBBY", panel.transform, new Vector2(0.07f, 0.83f), new Vector2(0.93f, 0.96f), 38, Color.white);
+        Label("PLAYTIME CO.  /  MATCH ROOM", panel.transform, new Vector2(0.07f, 0.83f), new Vector2(0.93f, 0.96f), 30, Color.white);
         walletText = Label("CREDITS  " + PoppyShop.Credits + "     ★ TICKETS  " + PoppyShop.Tickets,
             panel.transform, new Vector2(0.07f, 0.76f), new Vector2(0.93f, 0.82f), 15, new Color(1f, 0.78f, 0.24f));
         statusText = Label("EN ATTENTE DES JOUEURS", panel.transform, new Vector2(0.07f, 0.69f), new Vector2(0.93f, 0.75f), 17, new Color(1f, 0.35f, 0.2f));
@@ -141,9 +138,12 @@ public class PoppyLobbyUI : MonoBehaviour
         layout.childControlHeight = true;
         layout.childForceExpandHeight = false;
 
-        readyButton = ButtonUI("READY BUTTON", panel.transform, "PRÊT / PAS PRÊT",
+        Label("P  •  SE DÉCLARER PRÊT     O  •  LANCER (HÔTE)", panel.transform,
+            new Vector2(0.07f, 0.035f), new Vector2(0.93f, 0.095f), 13, new Color(0.72f, 0.78f, 0.84f));
+
+        readyButton = ButtonUI("READY BUTTON", panel.transform, "P  •  JE SUIS PRÊT",
             new Vector2(0.07f, 0.12f), new Vector2(0.48f, 0.22f), ToggleReady);
-        startButton = ButtonUI("START BUTTON", panel.transform, "LANCER LA PARTIE",
+        startButton = ButtonUI("START BUTTON", panel.transform, "O  •  LANCER LA PARTIE",
             new Vector2(0.52f, 0.12f), new Vector2(0.93f, 0.22f), StartMatch);
     }
 
@@ -176,7 +176,7 @@ public class PoppyLobbyUI : MonoBehaviour
         if (readyButton != null)
         {
             TMP_Text label = readyButton.GetComponentInChildren<TMP_Text>();
-            if (label != null) label.text = localReady ? "ANNULER PRÊT" : "JE SUIS PRÊT";
+            if (label != null) label.text = localReady ? "P  •  ANNULER PRÊT" : "P  •  JE SUIS PRÊT";
         }
     }
 
@@ -184,28 +184,6 @@ public class PoppyLobbyUI : MonoBehaviour
     {
         if (gameManager != null && NetworkManager.Singleton != null && NetworkManager.Singleton.IsHost)
             gameManager.StartMatchFromLobby();
-    }
-
-    private void ApplyLobbyCamera(bool showLobby)
-    {
-        if (roomBuilder == null) roomBuilder = FindObjectOfType<PoppyLobbyRoomBuilder>();
-        if (roomBuilder != null && roomBuilder.lobbyCamera != null)
-        {
-            roomBuilder.lobbyCamera.enabled = showLobby;
-            AudioListener listener = roomBuilder.lobbyCamera.GetComponent<AudioListener>();
-            if (listener != null) listener.enabled = showLobby;
-        }
-
-        DbUnityMovment[] players = FindObjectsOfType<DbUnityMovment>();
-        for (int i = 0; i < players.Length; i++)
-        {
-            DbUnityMovment player = players[i];
-            if (player == null || !player.IsOwner || player.cameraTransform == null) continue;
-            Camera camera = player.cameraTransform.GetComponent<Camera>();
-            AudioListener listener = player.cameraTransform.GetComponent<AudioListener>();
-            if (camera != null) camera.enabled = !showLobby;
-            if (listener != null) listener.enabled = !showLobby;
-        }
     }
 
     private void SetVisible(bool visible, bool sessionActive)
