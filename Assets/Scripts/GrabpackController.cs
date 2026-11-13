@@ -53,11 +53,19 @@ public class GrabpackController : NetworkBehaviour
 
 	private void Update()
 	{
-		UpdateBatteryPositions();
-		if (!IsOwner)
+		if (!IsSpawned || !IsOwner)
+			return;
+
+		if (PoppyUIInputGate.ShouldBlockGameplayMouse())
 		{
+			if (blueHand != null && blueHand.CurrentState != GrabpackHand.HandState.Idle)
+				RetractHandAndReleaseDoor(blueHand, 0);
+			if (redHand != null && redHand.CurrentState != GrabpackHand.HandState.Idle)
+				RetractHandAndReleaseDoor(redHand, 1);
 			return;
 		}
+
+		UpdateBatteryPositions();
 		if (Input.GetMouseButtonDown(0))
 		{
 			TryFireHand(blueHand, 0);
@@ -105,7 +113,13 @@ public class GrabpackController : NetworkBehaviour
 		}
 		GrabpackDraggableDoor door = null;
 		Vector3 targetPoint;
-		if (Physics.Raycast(new Ray(playerCamera.position, playerCamera.forward), out var hitInfo, grabDistance, interactableLayer))
+		if (playerCamera == null)
+		{
+			Debug.LogWarning("GrabpackController: Player camera is not assigned.", this);
+			return;
+		}
+
+		if (Physics.Raycast(new Ray(playerCamera.position, playerCamera.forward), out var hitInfo, Mathf.Max(0.1f, grabDistance), interactableLayer, QueryTriggerInteraction.Ignore))
 		{
 			targetPoint = hitInfo.point;
 			if (hitInfo.collider.CompareTag("Battery"))
@@ -199,11 +213,11 @@ public class GrabpackController : NetworkBehaviour
 
 	private void HandleReelInPhysics()
 	{
-		if (Input.GetMouseButton(0) && reeledObjectBlue != null && blueHand != null)
+		if (Input.GetMouseButton(0) && reeledObjectBlue != null && blueHand != null && blueHand.handSpawnPoint != null)
 		{
 			ApplyMassBasedForce(reeledObjectBlue, blueHand.handSpawnPoint.position);
 		}
-		if (Input.GetMouseButton(1) && reeledObjectRed != null && redHand != null)
+		if (Input.GetMouseButton(1) && reeledObjectRed != null && redHand != null && redHand.handSpawnPoint != null)
 		{
 			ApplyMassBasedForce(reeledObjectRed, redHand.handSpawnPoint.position);
 		}
@@ -292,7 +306,7 @@ public class GrabpackController : NetworkBehaviour
 		Vector3 zero = Vector3.zero;
 		zero += CalculatePull(blueHand);
 		zero += CalculatePull(redHand);
-		if (zero.magnitude > 0.1f)
+		if (_controller != null && _controller.enabled && zero.sqrMagnitude > 0.01f)
 		{
 			_controller.Move(zero * Time.fixedDeltaTime);
 		}
@@ -300,7 +314,7 @@ public class GrabpackController : NetworkBehaviour
 
 	private Vector3 CalculatePull(GrabpackHand hand)
 	{
-		if (hand != null && hand.CurrentState == GrabpackHand.HandState.Attached)
+		if (hand != null && hand.handObject != null && hand.CurrentState == GrabpackHand.HandState.Attached)
 		{
 			if (hand == blueHand && reeledObjectBlue != null)
 			{
@@ -425,7 +439,8 @@ public class GrabpackController : NetworkBehaviour
 			if (!isHeld)
 			{
 				component.velocity = Vector3.zero;
-				component.AddForce(playerCamera.forward * 4f, ForceMode.VelocityChange);
+				Vector3 dropDirection = playerCamera != null ? playerCamera.forward : transform.forward;
+				component.AddForce(dropDirection * 4f, ForceMode.VelocityChange);
 			}
 		}
 		networkObject.transform.SetParent(null);

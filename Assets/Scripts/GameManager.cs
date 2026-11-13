@@ -18,6 +18,12 @@ public class GameManager : NetworkBehaviour
 
 	public Transform monsterSpawnPoint;
 
+	[Header("Optional AI Enemy")]
+	[Tooltip("Network prefab with NetworkObject, server-authoritative NetworkTransform, NavMeshAgent and HuggyHunterAI.")]
+	public NetworkObject aiMonsterPrefab;
+
+	private NetworkObject spawnedAiMonster;
+
 	[Header("TextMesh Pro UI Elements")]
 	public TextMeshProUGUI timerText;
 
@@ -29,9 +35,108 @@ public class GameManager : NetworkBehaviour
 	[Header("Game Settings")]
 	public int gameDurationSeconds = 180;
 
-	private NetworkVariable<int> _netTimer = new NetworkVariable<int>(180);
+	private NetworkVariable<int> _netTimer = new NetworkVariable<int>(180, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+	private NetworkVariable<bool> _netGameStarted = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+	private NetworkList<ulong> _readyClients = new NetworkList<ulong>();
+	private readonly HashSet<ulong> _eliminatedClients = new HashSet<ulong>();
 
 	private bool _gameStarted;
+	private int _roundId;
+
+	public bool IsGameStarted => _netGameStarted.Value;
+	public bool IsClientReady(ulong clientId) => _readyClients.Contains(clientId);
+	public bool IsClientEliminated(ulong clientId) => _eliminatedClients.Contains(clientId);
+
+	public bool CanStartMatch
+	{
+		get
+		{
+			if (!IsServer || NetworkManager.Singleton == null || _gameStarted)
+				return false;
+
+			int count = NetworkManager.Singleton.ConnectedClientsList.Count;
+			bool useAI = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1;
+			bool validMode = useAI
+				? aiMonsterPrefab != null && monsterSpawnPoint != null && count >= 1
+				: count >= 2;
+
+			if (!validMode)
+				return false;
+
+			foreach (NetworkClient client in NetworkManager.Singleton.ConnectedClientsList)
+			{
+				if (!_readyClients.Contains(client.ClientId))
+					return false;
+			}
+			return true;
+		}
+	}
+
+	public void StartMatchFromLobby()
+	{
+		if (!CanStartMatch)
+			return;
+
+		if (hostStartPromptUI != null)
+			hostStartPromptUI.SetActive(false);
+		StartCoroutine(StartGameLoop());
+	}
+
+	public void RequestReturnToLobby()
+	{
+		if (!IsSpawned)
+			return;
+
+		if (IsServer)
+		{
+			if (_gameStarted)
+				EndGame(grantRewards: false);
+		}
+		else
+		{
+			RequestReturnToLobbyServerRpc();
+		}
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	private void RequestReturnToLobbyServerRpc(ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		if (!IsServer || !_gameStarted || NetworkManager.Singleton == null)
+			return;
+
+		// Returning to the waiting room ends the current shared round for everyone.
+		EndGame(grantRewards: false);
+	}
+
+	public void SetLocalReady(bool ready)
+	{
+		if (IsSpawned)
+			SetReadyServerRpc(ready);
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	private void SetReadyServerRpc(bool ready, ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+
+		ulong sender = rpcParams.Receive.SenderClientId;
+		if (!NetworkManager.Singleton.ConnectedClients.ContainsKey(sender))
+			return;
+
+		bool currentlyReady = _readyClients.Contains(sender);
+		if (ready && !currentlyReady)
+			_readyClients.Add(sender);
+		else if (!ready && currentlyReady)
+			_readyClients.Remove(sender);
+	}
+
+	private void OnValidate()
+	{
+		gameDurationSeconds = Mathf.Max(1, gameDurationSeconds);
+		if (networkedObjects == null)
+			networkedObjects = new List<NetworkObject>();
+	}
 
 	private void Start()
 	{
@@ -51,40 +156,55 @@ public class GameManager : NetworkBehaviour
 
 	public override void OnNetworkSpawn()
 	{
-		NetworkVariable<int> netTimer = _netTimer;
-		netTimer.OnValueChanged = (NetworkVariable<int>.OnValueChangedDelegate)Delegate.Combine(netTimer.OnValueChanged, new NetworkVariable<int>.OnValueChangedDelegate(UpdateTimerUI));
+		_netTimer.OnValueChanged += UpdateTimerUI;
 		UpdateTimerUI(0, _netTimer.Value);
-		if (IsServer)
-		{
-			_netTimer.Value = gameDurationSeconds;
-			NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
-			SpawnAndSyncNetworkedObjects();
-		}
+
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+
+		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
+		NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
+		NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
+		_readyClients.Clear();
+		SpawnAndSyncNetworkedObjects();
 	}
 
 	public override void OnNetworkDespawn()
 	{
-		NetworkVariable<int> netTimer = _netTimer;
-		netTimer.OnValueChanged = (NetworkVariable<int>.OnValueChangedDelegate)Delegate.Remove(netTimer.OnValueChanged, new NetworkVariable<int>.OnValueChangedDelegate(UpdateTimerUI));
+		_netTimer.OnValueChanged -= UpdateTimerUI;
 		if (IsServer && NetworkManager.Singleton != null)
 		{
 			NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
+			NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnected;
 		}
 	}
 
 	private void Update()
 	{
-		if (!IsServer || _gameStarted)
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+
+		if (_gameStarted)
 		{
+			if (PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 &&
+				NetworkManager.Singleton.ConnectedClientsList.Count > 0 &&
+				_eliminatedClients.Count >= NetworkManager.Singleton.ConnectedClientsList.Count)
+			{
+				EndGame();
+			}
 			return;
 		}
-		if (NetworkManager.Singleton.ConnectedClientsList.Count >= 2)
+
+		bool canStartMatch = CanStartMatch;
+
+		if (canStartMatch)
 		{
 			if (hostStartPromptUI != null && !hostStartPromptUI.activeSelf)
 			{
 				hostStartPromptUI.SetActive(value: true);
 			}
-			if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+			if (!PoppyUIInputGate.IsGameplayBlocked &&
+				(Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
 			{
 				if (hostStartPromptUI != null)
 				{
@@ -101,7 +221,7 @@ public class GameManager : NetworkBehaviour
 
 	private void OnClientConnected(ulong clientId)
 	{
-		if (IsServer)
+		if (IsServer && NetworkManager.Singleton != null)
 		{
 			SpawnAndSyncNetworkedObjects();
 			if (lobbySpawnPoint != null)
@@ -111,12 +231,17 @@ public class GameManager : NetworkBehaviour
 		}
 	}
 
+	private void OnClientDisconnected(ulong clientId)
+	{
+		if (IsServer && _readyClients.Contains(clientId))
+			_readyClients.Remove(clientId);
+	}
+
 	private void SpawnAndSyncNetworkedObjects()
 	{
-		if (!IsServer)
-		{
+		if (!IsServer || networkedObjects == null)
 			return;
-		}
+
 		foreach (NetworkObject networkedObject in networkedObjects)
 		{
 			if (networkedObject != null && !networkedObject.IsSpawned)
@@ -128,56 +253,124 @@ public class GameManager : NetworkBehaviour
 
 	private IEnumerator StartGameLoop()
 	{
+		if (!IsServer || _gameStarted || NetworkManager.Singleton == null)
+			yield break;
+
+		_roundId++;
+		int currentRoundId = _roundId;
 		_gameStarted = true;
+		_netGameStarted.Value = true;
+		_eliminatedClients.Clear();
+		ResetRoundProgression();
+		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		SetRoleNotificationClientRpc("Assigning Roles...");
-		yield return new WaitForSeconds(3f);
+		yield return new WaitForSecondsRealtime(3f);
+		if (!IsServer || currentRoundId != _roundId || !_gameStarted)
+			yield break;
+
 		AssignRolesAndSpawn();
-		while (_netTimer.Value > 0)
+		if (!_gameStarted || currentRoundId != _roundId)
+			yield break;
+
+		while (IsServer && currentRoundId == _roundId && _gameStarted && _netTimer.Value > 0)
 		{
-			yield return new WaitForSeconds(1f);
-			_netTimer.Value--;
+			yield return new WaitForSecondsRealtime(1f);
+			if (currentRoundId != _roundId || !_gameStarted)
+				yield break;
+			_netTimer.Value = Mathf.Max(0, _netTimer.Value - 1);
 		}
-		EndGame();
+		if (currentRoundId == _roundId && _gameStarted)
+			EndGame();
 	}
 
 	private void AssignRolesAndSpawn()
 	{
-		if (!IsServer)
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+
+		List<NetworkClient> clients = new List<NetworkClient>();
+		foreach (NetworkClient connectedClient in NetworkManager.Singleton.ConnectedClientsList)
 		{
+			if (connectedClient != null && connectedClient.PlayerObject != null)
+				clients.Add(connectedClient);
+		}
+		if (clients.Count == 0)
+			return;
+
+		bool useAI = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1;
+		if (useAI && (aiMonsterPrefab == null || monsterSpawnPoint == null))
+		{
+			Debug.LogError("AI mode cannot start: assign aiMonsterPrefab and monsterSpawnPoint in GameManager.", this);
+			_gameStarted = false;
+			_netGameStarted.Value = false;
 			return;
 		}
-		IReadOnlyList<NetworkClient> connectedClientsList = NetworkManager.Singleton.ConnectedClientsList;
-		if (connectedClientsList.Count == 0)
+
+		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
+			spawnedAiMonster.Despawn(true);
+		spawnedAiMonster = null;
+
+		if (useAI)
 		{
-			return;
-		}
-		int num = UnityEngine.Random.Range(0, connectedClientsList.Count);
-		int num2 = 0;
-		for (int i = 0; i < connectedClientsList.Count; i++)
-		{
-			ulong clientId = connectedClientsList[i].ClientId;
-			if (!(connectedClientsList[i].PlayerObject == null))
+			int survivorIndex = 0;
+			for (int i = 0; i < clients.Count; i++)
 			{
-				if (i == num)
-				{
-					Vector3 targetPosition = ((monsterSpawnPoint != null) ? monsterSpawnPoint.position : transform.position);
-					ExecuteTargetedTeleport(clientId, targetPosition, isMonster: true, isSurvivor: false);
-					NotifySingleClientRole(clientId, "YOU ARE THE MONSTER! HUNT THE HIDERS!");
-				}
-				else
-				{
-					Vector3 targetPosition2 = ((survivorSpawnPoints != null && survivorSpawnPoints.Length != 0) ? survivorSpawnPoints[num2 % survivorSpawnPoints.Length].position : transform.position);
-					ExecuteTargetedTeleport(clientId, targetPosition2, isMonster: false, isSurvivor: true);
-					NotifySingleClientRole(clientId, "YOU ARE A HIDER! SURVIVE!");
-					num2++;
-				}
+				NetworkClient client = clients[i];
+				if (client.PlayerObject == null)
+					continue;
+
+				Vector3 spawn = survivorSpawnPoints != null && survivorSpawnPoints.Length > 0
+					? survivorSpawnPoints[survivorIndex % survivorSpawnPoints.Length].position
+					: transform.position;
+				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: false, isSurvivor: true);
+				NotifySingleClientRole(client.ClientId, "HUGGY IS HUNTING YOU. SURVIVE!");
+				survivorIndex++;
+			}
+
+			spawnedAiMonster = Instantiate(aiMonsterPrefab, monsterSpawnPoint.position, monsterSpawnPoint.rotation);
+			spawnedAiMonster.Spawn();
+			return;
+		}
+
+		int monsterIndex = UnityEngine.Random.Range(0, clients.Count);
+		int survivorSpawnIndex = 0;
+		for (int i = 0; i < clients.Count; i++)
+		{
+			NetworkClient client = clients[i];
+			if (client.PlayerObject == null)
+				continue;
+
+			if (i == monsterIndex)
+			{
+				Vector3 spawn = monsterSpawnPoint != null ? monsterSpawnPoint.position : transform.position;
+				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: true, isSurvivor: false);
+				NotifySingleClientRole(client.ClientId, "YOU ARE THE MONSTER! HUNT THE HIDERS!");
+			}
+			else
+			{
+				Vector3 spawn = survivorSpawnPoints != null && survivorSpawnPoints.Length > 0
+					? survivorSpawnPoints[survivorSpawnIndex % survivorSpawnPoints.Length].position
+					: transform.position;
+				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: false, isSurvivor: true);
+				NotifySingleClientRole(client.ClientId, "YOU ARE A HIDER! SURVIVE!");
+				survivorSpawnIndex++;
 			}
 		}
 	}
 
 	public void ExecuteTargetedTeleport(ulong clientId, Vector3 targetPosition, bool isMonster, bool isSurvivor)
 	{
-		if (IsServer && NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var value) && value.PlayerObject != null)
+		if (IsServer)
+		{
+			if (!isSurvivor && !isMonster)
+				_eliminatedClients.Add(clientId);
+			else if (isSurvivor)
+				_eliminatedClients.Remove(clientId);
+		}
+
+		if (IsServer && NetworkManager.Singleton != null &&
+			NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var value) &&
+			value.PlayerObject != null)
 		{
 			ulong networkObjectId = value.PlayerObject.NetworkObjectId;
 			TeleportClientTargetClientRpc(targetPosition, isMonster, isSurvivor, networkObjectId, clientId);
@@ -187,7 +380,9 @@ public class GameManager : NetworkBehaviour
 	[ClientRpc]
 	private void TeleportClientTargetClientRpc(Vector3 targetPosition, bool isMonster, bool isSurvivor, ulong targetNetObjectId, ulong targetOwnerId)
 	{
-		if (!NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetNetObjectId, out var value) || value.OwnerClientId != targetOwnerId)
+		if (NetworkManager.Singleton == null ||
+			!NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetNetObjectId, out var value) ||
+			value.OwnerClientId != targetOwnerId)
 		{
 			return;
 		}
@@ -217,18 +412,16 @@ public class GameManager : NetworkBehaviour
 			{
 				component.survivorModelContainer.SetActive(isSurvivor);
 			}
-			if (component.monsterModelContainer != null)
+ 			if (component.monsterModelContainer != null)
 			{
 				component.monsterModelContainer.SetActive(isMonster);
 			}
+			component.RefreshSkinColor();
 			if (component.deadModelContainer != null)
 			{
 				component.deadModelContainer.SetActive(value: false);
 			}
-			if (value.IsOwner)
-			{
-				component.SetGrabpackStatus(isSurvivor);
-			}
+			component.SetEliminatedState(!isSurvivor && !isMonster, isSurvivor);
 		}
 		if (component3 != null)
 		{
@@ -283,14 +476,62 @@ public class GameManager : NetworkBehaviour
 		}
 	}
 
-	private void EndGame()
+	[ClientRpc]
+	private void GrantMatchCreditsClientRpc(int amount)
 	{
-		if (!IsServer)
-		{
+		PoppyShop.AddCredits(amount);
+	}
+
+	[ClientRpc]
+	private void GrantMatchTicketsClientRpc(int amount)
+	{
+		PoppyShop.AddTickets(amount);
+	}
+
+	private void ResetRoundProgression()
+	{
+		if (!IsServer || NetworkManager.Singleton == null)
 			return;
+
+		foreach (NetworkClient client in NetworkManager.Singleton.ConnectedClientsList)
+		{
+			if (client.PlayerObject == null)
+				continue;
+
+			GrabpackProgression progression = client.PlayerObject.GetComponent<GrabpackProgression>();
+			if (progression != null)
+				progression.ResetForNewMatch();
 		}
+
+		GrabpackUnlockStation[] stations = FindObjectsOfType<GrabpackUnlockStation>(true);
+		for (int i = 0; i < stations.Length; i++)
+			stations[i].ResetForNewMatch();
+
+		GrabpackPuzzleInteractable[] puzzles = FindObjectsOfType<GrabpackPuzzleInteractable>(true);
+		for (int i = 0; i < puzzles.Length; i++)
+			puzzles[i].ResetForNewMatch();
+	}
+
+	private void EndGame(bool grantRewards = true)
+	{
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+
+		_roundId++;
 		_gameStarted = false;
-		_netTimer.Value = gameDurationSeconds;
+		_netGameStarted.Value = false;
+		_eliminatedClients.Clear();
+		_readyClients.Clear();
+		ResetRoundProgression();
+		if (grantRewards)
+		{
+			GrantMatchCreditsClientRpc(100);
+			GrantMatchTicketsClientRpc(1);
+		}
+		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
+			spawnedAiMonster.Despawn(true);
+		spawnedAiMonster = null;
+		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		foreach (NetworkClient connectedClients in NetworkManager.Singleton.ConnectedClientsList)
 		{
 			if (connectedClients.PlayerObject != null && lobbySpawnPoint != null)

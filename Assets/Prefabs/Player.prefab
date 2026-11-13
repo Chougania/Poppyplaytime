@@ -18,6 +18,7 @@ GameObject:
   - component: {fileID: 114596793934052148}
   - component: {fileID: 114381869093814388}
   - component: {fileID: 114163425435797775}
+  - component: {fileID: 114777777777777701}
   m_Layer: 7
   m_Name: Player
   m_TagString: Player
@@ -7428,6 +7429,28 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   nameTextMesh: {fileID: 114764702798633219}
   offset: {x: -0.4180074, y: 1.757, z: -0.000116467}
+--- !u!114 &114777777777777701
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1709254077376921}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31d8caa3b69e4b24a2d3a83f6fbc4101, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  greenHandVisual: {fileID: 0}
+  magnetHandVisual: {fileID: 0}
+  flareHandVisual: {fileID: 0}
+  blacklightHandVisual: {fileID: 0}
+  interactionDistance: 4
+  puzzleLayer:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  interactKey: 101
+  viewOrigin: {fileID: 4108722078165427}
 --- !u!4 &4857328259384655
 Transform:
   serializedVersion: 2

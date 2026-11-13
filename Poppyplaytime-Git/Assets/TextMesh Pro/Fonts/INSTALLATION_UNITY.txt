@@ -1,0 +1,27 @@
+VCR OSD MONO - INSTALLATION UNITY
+
+1) Copiez VCR_OSD_MONO_1.ttf dans votre projet Unity, par exemple :
+   Assets/Fonts/VCR_OSD_MONO_1.ttf
+
+2) Utilisation avec TextMeshPro :
+   - Ouvrez Window > TextMeshPro > Font Asset Creator.
+   - Source Font File : sélectionnez VCR_OSD_MONO_1.ttf.
+   - Atlas Resolution : commencez par 1024 x 1024 (2048 x 2048 si nécessaire).
+   - Character Set : choisissez Unicode Range ( at minimum Basic Latin + Latin-1 Supplement )
+     ou Custom Characters et ajoutez les caractères utilisés par votre jeu.
+   - Incluez les caractères français : é è ê ë à â ä ù û ü ô ö î ï ç É È Ê Ë À Â Ä Ù Û Ü Ô Ö Î Ï Ç.
+   - Cliquez Generate Font Atlas, puis Save (ou Save as) et enregistrez le résultat dans Assets/Fonts.
+   - Dans votre composant TextMeshPro - Text (UI), assignez le nouvel asset dans Font Asset.
+
+3) Si certains caractères deviennent des carrés :
+   - Vérifiez qu'ils sont inclus dans l'atlas (Character Table).
+   - Augmentez la résolution de l'atlas si des glyphes n'ont pas pu être ajoutés.
+   - Pour du texte dynamique, choisissez un atlas dynamique si votre version de TMP le propose,
+     ou ajoutez les caractères manquants puis régénérez l'atlas.
+
+Utilisation avec l'ancien composant UI > Text :
+Glissez simplement le fichier .ttf dans le champ Font du composant Text.
+
+Note : le fichier .ttf est déjà une police TrueType valide et contient les lettres latines
+et les principaux accents français. Le fichier .asset TextMeshPro doit être généré dans Unity,
+car il dépend de la version de TextMeshPro/Unity et de son atlas de texture.

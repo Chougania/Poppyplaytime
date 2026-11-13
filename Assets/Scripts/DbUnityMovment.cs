@@ -40,6 +40,21 @@ public class DbUnityMovment : NetworkBehaviour
 
 	public float gravity = 9.81f;
 
+	[Header("Survivor Stamina")]
+	[Min(0.1f)] public float maxStamina = 5f;
+	public bool showStaminaHUD = true;
+	[Min(0f)] public float staminaDrainPerSecond = 1f;
+	[Min(0f)] public float staminaRecoveryPerSecond = 0.8f;
+	[Min(0f)] public float staminaRecoveryDelay = 1.25f;
+	[Range(0f, 1f)] public float exhaustedThreshold = 0.08f;
+
+	private float _stamina;
+	private float _lastSprintTime;
+	private bool _wasExhausted;
+
+	public float StaminaNormalized => maxStamina <= 0f ? 0f : Mathf.Clamp01(_stamina / maxStamina);
+	public bool IsExhausted => _wasExhausted;
+
 	[Header("Camera Settings")]
 	public Transform cameraTransform;
 
@@ -81,6 +96,8 @@ public class DbUnityMovment : NetworkBehaviour
 
 	private NetworkVariable<bool> _netIsLockedInAttack = new NetworkVariable<bool>(value: false);
 
+	private NetworkVariable<int> _skinColorIndex = new NetworkVariable<int>(0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
 	private void Awake()
 	{
 		_controller = GetComponent<CharacterController>();
@@ -89,6 +106,10 @@ public class DbUnityMovment : NetworkBehaviour
 
 	public override void OnNetworkSpawn()
 	{
+		_skinColorIndex.OnValueChanged += OnSkinColorChanged;
+		ApplySkinColor(_skinColorIndex.Value);
+		if (IsOwner)
+			RequestSkinColorServerRpc(PoppyShop.SelectedColor);
 		if (monsterModelContainer != null && monsterModelContainer.activeSelf)
 		{
 			_animator = monsterModelContainer.GetComponent<Animator>() ?? monsterModelContainer.GetComponentInChildren<Animator>();
@@ -102,6 +123,7 @@ public class DbUnityMovment : NetworkBehaviour
 			Cursor.lockState = CursorLockMode.Locked;
 			Cursor.visible = false;
 			_currentCameraOffset = cameraOffset;
+			_stamina = Mathf.Max(0.1f, maxStamina);
 			if (cameraTransform != null)
 			{
 				cameraTransform.localPosition = cameraOffset;
@@ -161,6 +183,37 @@ public class DbUnityMovment : NetworkBehaviour
 		}
 	}
 
+
+	public override void OnNetworkDespawn()
+	{
+		_skinColorIndex.OnValueChanged -= OnSkinColorChanged;
+	}
+
+	[ServerRpc]
+	private void RequestSkinColorServerRpc(int colorIndex)
+	{
+		if (colorIndex >= 0 && colorIndex < PoppyShop.ColorCount)
+			_skinColorIndex.Value = colorIndex;
+	}
+
+	private void OnSkinColorChanged(int previous, int current)
+	{
+		ApplySkinColor(current);
+	}
+
+	public void RefreshSkinColor()
+	{
+		ApplySkinColor(_skinColorIndex.Value);
+	}
+
+	private void ApplySkinColor(int colorIndex)
+	{
+		if (survivorModelContainer != null)
+			PoppyShop.ApplyColor(survivorModelContainer, colorIndex);
+		if (monsterModelContainer != null)
+			PoppyShop.ApplyColor(monsterModelContainer, colorIndex);
+	}
+
 	private void Update()
 	{
 		if (!IsOwner)
@@ -174,10 +227,14 @@ public class DbUnityMovment : NetworkBehaviour
 		}
 		else if (_netIsLockedInAttack.Value || _isLockedInAttack || _isLocalVictimFrozen)
 		{
-			if (_controller.enabled)
+			if (_controller != null && _controller.enabled)
 			{
 				_controller.Move(Vector3.zero);
 			}
+			UpdateAnimatorProperties(0f, IsCrouching.Value, sprint: false, walk: false);
+		}
+		else if (PoppyUIInputGate.IsGameplayBlocked)
+		{
 			UpdateAnimatorProperties(0f, IsCrouching.Value, sprint: false, walk: false);
 		}
 		else
@@ -220,34 +277,46 @@ public class DbUnityMovment : NetworkBehaviour
 	{
 		float axis = Input.GetAxis("Horizontal");
 		float axis2 = Input.GetAxis("Vertical");
-		bool key = Input.GetKey(KeyCode.LeftShift);
-		bool key2 = Input.GetKey(KeyCode.LeftControl);
-		float magnitude = new Vector2(axis, axis2).magnitude;
-		float num = walkSpeed;
-		if (!(monsterModelContainer != null) || !monsterModelContainer.activeSelf)
+		bool wantsSprint = Input.GetKey(KeyCode.LeftShift) && axis2 > 0.1f;
+		bool crouching = Input.GetKey(KeyCode.LeftControl);
+		bool isMonster = monsterModelContainer != null && monsterModelContainer.activeSelf;
+		float inputMagnitude = new Vector2(axis, axis2).magnitude;
+
+		if (!isMonster)
 		{
-			if (key2)
+			if (wantsSprint && !crouching && _stamina > maxStamina * exhaustedThreshold)
 			{
-				num = crouchSpeed;
+				_stamina = Mathf.Max(0f, _stamina - staminaDrainPerSecond * Time.deltaTime);
+				_lastSprintTime = Time.time;
+				if (_stamina <= maxStamina * exhaustedThreshold)
+					_wasExhausted = true;
 			}
-			else
+			else if (Time.time >= _lastSprintTime + staminaRecoveryDelay)
 			{
-				num = ((key && axis2 > 0.1f) ? sprintSpeed : walkSpeed);
+				float recovery = crouching ? staminaRecoveryPerSecond * 1.35f : staminaRecoveryPerSecond;
+				_stamina = Mathf.Min(maxStamina, _stamina + recovery * Time.deltaTime);
+				if (_stamina > maxStamina * 0.25f)
+					_wasExhausted = false;
 			}
 		}
 		else
 		{
-			num = monsterSpeed;
+			_stamina = maxStamina;
+			_wasExhausted = false;
 		}
-		Vector3 vector = transform.right * axis + transform.forward * axis2;
-		if (vector.magnitude > 1f)
-		{
-			vector.Normalize();
-		}
+
+		bool sprinting = !isMonster && wantsSprint && !crouching &&
+			_stamina > maxStamina * exhaustedThreshold && !_wasExhausted;
+		float speed = isMonster ? monsterSpeed : (crouching ? crouchSpeed : (sprinting ? sprintSpeed : walkSpeed));
+
+		Vector3 direction = transform.right * axis + transform.forward * axis2;
+		if (direction.magnitude > 1f)
+			direction.Normalize();
+
 		if (_controller.enabled && _controller.isGrounded)
 		{
 			_verticalVelocity = -2f;
-			if (Input.GetButtonDown("Jump") && !monsterModelContainer.activeSelf)
+			if (Input.GetButtonDown("Jump") && !isMonster)
 			{
 				_verticalVelocity = Mathf.Sqrt(jumpHeight * 2f * gravity);
 				JumpServerRpc();
@@ -257,19 +326,19 @@ public class DbUnityMovment : NetworkBehaviour
 		{
 			_verticalVelocity -= gravity * Time.deltaTime;
 		}
-		Vector3 vector2 = vector * num;
-		vector2.y = _verticalVelocity;
+
+		Vector3 velocity = direction * speed;
+		velocity.y = _verticalVelocity;
 		if (_controller.enabled)
-		{
-			_controller.Move(vector2 * Time.deltaTime);
-		}
-		float num2 = ((magnitude > 0.05f) ? num : 0f);
+			_controller.Move(velocity * Time.deltaTime);
+
+		float animationSpeed = inputMagnitude > 0.05f ? speed : 0f;
 		NetPosition.Value = transform.position;
-		NetMoveSpeed.Value = num2;
-		IsCrouching.Value = key2;
-		IsSprinting.Value = ((num2 > walkSpeed) & key) && !key2 && (monsterModelContainer == null || !monsterModelContainer.activeSelf);
-		IsWalking.Value = num2 > 0.1f && !key && !key2;
-		UpdateAnimatorProperties(num2, key2, IsSprinting.Value, IsWalking.Value);
+		NetMoveSpeed.Value = animationSpeed;
+		IsCrouching.Value = crouching;
+		IsSprinting.Value = sprinting && animationSpeed > walkSpeed;
+		IsWalking.Value = animationSpeed > 0.1f && !sprinting && !crouching;
+		UpdateAnimatorProperties(animationSpeed, crouching, IsSprinting.Value, IsWalking.Value);
 	}
 
 	private void UpdateAnimatorProperties(float speed, bool crouch, bool sprint, bool walk)
@@ -283,9 +352,37 @@ public class DbUnityMovment : NetworkBehaviour
 		}
 	}
 
+	private void OnGUI()
+	{
+		if (!showStaminaHUD || !IsSpawned || !IsOwner || maxStamina <= 0f ||
+			(monsterModelContainer != null && monsterModelContainer.activeSelf) ||
+			(survivorModelContainer != null && !survivorModelContainer.activeSelf))
+			return;
+
+		const float width = 220f;
+		const float height = 14f;
+		Rect background = new Rect((Screen.width - width) * 0.5f, Screen.height - 48f, width, height);
+		Color previousColor = GUI.color;
+
+		GUI.color = new Color(0.04f, 0.04f, 0.04f, 0.85f);
+		GUI.Box(background, GUIContent.none);
+
+		float fill = StaminaNormalized;
+		GUI.color = fill > 0.5f
+			? new Color(0.25f, 0.85f, 0.45f, 0.95f)
+			: (fill > exhaustedThreshold ? new Color(1f, 0.72f, 0.2f, 0.95f) : new Color(0.9f, 0.2f, 0.18f, 0.95f));
+		GUI.DrawTexture(new Rect(background.x + 2f, background.y + 2f,
+			(width - 4f) * fill, height - 4f), Texture2D.whiteTexture);
+
+		GUI.color = Color.white;
+		GUI.Label(new Rect(background.x, background.y - 19f, width, 18f),
+			_wasExhausted ? "ENDURANCE ÉPUISÉE" : "ENDURANCE");
+		GUI.color = previousColor;
+	}
+
 	private void HandleMonsterAttack()
 	{
-		if (!(monsterModelContainer == null) && monsterModelContainer.activeSelf && Input.GetMouseButtonDown(0) && !_isLockedInAttack && !_netIsLockedInAttack.Value)
+		if (monsterModelContainer != null && monsterModelContainer.activeSelf && Input.GetMouseButtonDown(0) && !_isLockedInAttack && !_netIsLockedInAttack.Value)
 		{
 			RequestAttackVisualServerRpc();
 			StartCoroutine(ActivateAttackCubeRoutine());
@@ -348,10 +445,54 @@ public class DbUnityMovment : NetworkBehaviour
 	[ServerRpc]
 	private void RequestKillTargetServerRpc(ulong victimClientId, ulong victimNetObjectId)
 	{
-		if (!_isLockedInAttack && !_netIsLockedInAttack.Value)
+		if (!IsServer || NetworkManager.Singleton == null ||
+			monsterModelContainer == null || !monsterModelContainer.activeSelf ||
+			_isLockedInAttack || _netIsLockedInAttack.Value)
+			return;
+
+		if (!NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(victimNetObjectId, out NetworkObject victimObject) ||
+			victimObject == null || victimObject.OwnerClientId != victimClientId ||
+			victimClientId == OwnerClientId)
+			return;
+
+		DbUnityMovment victimMovement = victimObject.GetComponent<DbUnityMovment>();
+		if (victimMovement == null || victimMovement.survivorModelContainer == null ||
+			!victimMovement.survivorModelContainer.activeSelf)
+			return;
+
+		float allowedDistance = Mathf.Max(0.5f, killDistance);
+		if ((victimObject.transform.position - transform.position).sqrMagnitude > allowedDistance * allowedDistance)
+			return;
+
+		if (attackCubeCollider != null)
 		{
-			StartCoroutine(ServerKillSequence(victimClientId, victimNetObjectId));
+			Vector3 attackCenter = attackCubeCollider.transform.TransformPoint(attackCubeCollider.center);
+			Vector3 attackSize = Vector3.Scale(attackCubeCollider.size, attackCubeCollider.transform.lossyScale);
+			Bounds attackBounds = new Bounds(attackCenter, attackSize);
+
+			Collider[] victimColliders = victimObject.GetComponentsInChildren<Collider>();
+			bool hasUsableCollider = false;
+			bool intersectsAttack = false;
+
+			for (int i = 0; i < victimColliders.Length; i++)
+			{
+				Collider victimCollider = victimColliders[i];
+				if (victimCollider == null || !victimCollider.enabled || victimCollider.isTrigger)
+					continue;
+
+				hasUsableCollider = true;
+				if (attackBounds.Intersects(victimCollider.bounds))
+				{
+					intersectsAttack = true;
+					break;
+				}
+			}
+
+			if (hasUsableCollider && !intersectsAttack)
+				return;
 		}
+
+		StartCoroutine(ServerKillSequence(victimClientId, victimNetObjectId));
 	}
 
 	private IEnumerator ServerKillSequence(ulong victimId, ulong victimNetObjectId)
@@ -372,7 +513,8 @@ public class DbUnityMovment : NetworkBehaviour
 	[ClientRpc]
 	private void TriggerJumpscareClientRpc(ulong victimId, ulong victimNetObjectId)
 	{
-		if (NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(victimNetObjectId, out var value))
+		if (NetworkManager.Singleton != null && NetworkManager.Singleton.SpawnManager != null &&
+			NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(victimNetObjectId, out var value))
 		{
 			DbUnityMovment component = value.GetComponent<DbUnityMovment>();
 			if (component != null)
@@ -393,7 +535,7 @@ public class DbUnityMovment : NetworkBehaviour
 				component.StartCoroutine(component.LocalVictimFreezeAndTeleportGuardRoutine());
 			}
 		}
-		if (NetworkManager.Singleton.LocalClientId == victimId && Camera.main != null)
+		if (NetworkManager.Singleton != null && NetworkManager.Singleton.LocalClientId == victimId && Camera.main != null)
 		{
 			Camera.main.transform.LookAt(transform.position + Vector3.up * 1.5f);
 		}
@@ -424,6 +566,28 @@ public class DbUnityMovment : NetworkBehaviour
 			_controller.enabled = true;
 		}
 		_isLocalVictimFrozen = false;
+	}
+
+	public void SetEliminatedState(bool eliminated, bool enableGrabpack)
+	{
+		if (!IsOwner)
+			return;
+
+		_isLocalVictimFrozen = eliminated;
+		if (_controller != null)
+			_controller.enabled = !eliminated;
+
+		SetGrabpackStatus(!eliminated && enableGrabpack);
+		if (eliminated)
+		{
+			Cursor.lockState = CursorLockMode.None;
+			Cursor.visible = true;
+		}
+		else
+		{
+			Cursor.lockState = CursorLockMode.Locked;
+			Cursor.visible = false;
+		}
 	}
 
 	public void SetGrabpackStatus(bool enableGrabpack)
