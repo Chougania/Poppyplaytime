@@ -33,6 +33,7 @@ public class ConnectionManafer : MonoBehaviour
 	public GameObject testingCamera;
 
 	public static string PlayerName;
+	public string CurrentRoomCode { get; private set; } = "";
 
 	private string rawLiveCode = "";
 
@@ -194,6 +195,7 @@ public class ConnectionManafer : MonoBehaviour
 			}
 			Allocation allocation = await RelayService.Instance.CreateAllocationAsync(4);
 			string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+			CurrentRoomCode = joinCode;
 			if (permanentCodeText != null)
 			{
 				permanentCodeText.text = "ROOM: " + joinCode;
@@ -209,10 +211,10 @@ public class ConnectionManafer : MonoBehaviour
 					{
 						IsPrivate = false,
 						Data = new Dictionary<string, DataObject> {
-						{
-							"RelayCode",
-							new DataObject(DataObject.VisibilityOptions.Public, joinCode)
-						} }
+                            { "RelayCode", new DataObject(DataObject.VisibilityOptions.Public, joinCode) },
+                            { "GameMode", new DataObject(DataObject.VisibilityOptions.Public, PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1 ? "HUGGY AI" : "MONSTER PLAYER") },
+                            { "Build", new DataObject(DataObject.VisibilityOptions.Public, Application.version) }
+                        }
 					};
 					hostedLobby = await LobbyService.Instance.CreateLobbyAsync("HorrorRoom_" + UnityEngine.Random.Range(100, 999), 4, options);
 					InvokeRepeating("HeartbeatLobby", 15f, 15f);
@@ -247,6 +249,50 @@ public class ConnectionManafer : MonoBehaviour
 		{
 			Debug.LogWarning("[Netcode] Heartbeat ping skipped: " + ex.Message);
 		}
+	}
+
+
+	public async void RefreshPublicLobbies(Action<List<Lobby>> onComplete)
+	{
+		if (!await EnsureServicesReadyAsync()) { onComplete?.Invoke(new List<Lobby>()); return; }
+		try
+		{
+			QueryLobbiesOptions query = new QueryLobbiesOptions
+			{
+				Count = 20,
+				Filters = new List<QueryFilter> { new QueryFilter(QueryFilter.FieldOptions.AvailableSlots, QueryFilter.OpOptions.GT, "0") }
+			};
+			QueryResponse response = await LobbyService.Instance.QueryLobbiesAsync(query);
+			onComplete?.Invoke(response.Results ?? new List<Lobby>());
+		}
+		catch (Exception ex) { Debug.LogWarning("[Netcode] Public room search failed: " + ex.Message); onComplete?.Invoke(new List<Lobby>()); }
+	}
+
+	public async void JoinPublicLobby(Lobby lobby)
+	{
+		if (lobby == null || lobby.Data == null || !lobby.Data.TryGetValue("RelayCode", out DataObject relayData) || string.IsNullOrWhiteSpace(relayData.Value))
+		{ Debug.LogWarning("[Netcode] This room has no valid Relay code."); return; }
+		await JoinRelayCodeAsync(relayData.Value);
+	}
+
+	private async Task JoinRelayCodeAsync(string joinCode)
+	{
+		if (networkManager == null) networkManager = NetworkManager.Singleton;
+		if (networkManager == null || networkManager.IsListening || !await EnsureServicesReadyAsync()) return;
+		try
+		{
+			UnityTransport transport = networkManager.GetComponent<UnityTransport>();
+			if (transport == null) return;
+			JoinAllocation allocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
+			transport.SetRelayServerData(new RelayServerData(allocation, "udp"));
+			if (networkManager.StartClient())
+			{
+				CurrentRoomCode = joinCode;
+				if (permanentCodeText != null) permanentCodeText.text = "ROOM: " + joinCode;
+				_isJoiningClient = true;
+			}
+		}
+		catch (Exception ex) { Debug.LogError("[Netcode] Could not join selected room: " + ex.Message); }
 	}
 
 	public async void JoinWithCode()
