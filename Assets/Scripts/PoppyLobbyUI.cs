@@ -19,6 +19,7 @@ public class PoppyLobbyUI : MonoBehaviour
     private TextMeshProUGUI statusText;
     private TextMeshProUGUI modeText;
     private TextMeshProUGUI walletText;
+    private TextMeshProUGUI roomCodeText;
     private Button readyButton;
     private Button startButton;
     private bool localReady;
@@ -91,6 +92,16 @@ public class PoppyLobbyUI : MonoBehaviour
             : "MODE : MONSTRE JOUEUR";
         if (walletText != null)
             walletText.text = "CREDITS  " + PoppyShop.Credits + "     ★ TICKETS  " + PoppyShop.Tickets;
+        if (roomCodeText != null)
+        {
+            bool showCode = net.IsHost && connectionManager != null;
+            roomCodeText.gameObject.SetActive(showCode);
+            if (showCode)
+            {
+                string code = connectionManager.CurrentRoomCode;
+                roomCodeText.text = string.IsNullOrEmpty(code) ? "ROOM CODE  •  PREPARING..." : "ROOM CODE  •  " + code;
+            }
+        }
 
         if (readyButton != null) readyButton.interactable = !inMatch;
         if (startButton != null)
@@ -117,6 +128,9 @@ public class PoppyLobbyUI : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920, 1080);
         scaler.matchWidthOrHeight = 0.5f;
 
+        GameObject codePlate = Panel("Host room code plate", root.transform, new Vector2(0.015f, 0.015f), new Vector2(0.38f, 0.10f), new Color(0.018f, 0.025f, 0.035f, 0.94f));
+        roomCodeText = Label("ROOM CODE  •  WAITING...", root.transform, new Vector2(0.03f, 0.025f), new Vector2(0.36f, 0.085f), 19, new Color(1f, 0.78f, 0.24f));
+        roomCodeText.gameObject.SetActive(false);
         GameObject panel = Panel("Lobby glass panel", root.transform, new Vector2(0.62f, 0.12f), new Vector2(0.97f, 0.88f),
             new Color(0.018f, 0.025f, 0.035f, 0.96f));
         Label("PLAYTIME CO.  /  MATCH ROOM", panel.transform, new Vector2(0.07f, 0.83f), new Vector2(0.93f, 0.96f), 30, Color.white);
