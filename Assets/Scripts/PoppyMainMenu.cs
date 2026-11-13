@@ -104,9 +104,13 @@ public class PoppyMainMenu : MonoBehaviour
             connectionManager.networkManager.IsListening;
         if (connected)
         {
-            wasConnectedToSession = true;
+            if (!wasConnectedToSession)
+            {
+                wasConnectedToSession = true;
+                // Clear menu flags once on entry, then let PoppyLobbyUI own the lobby flag.
+                PoppyUIInputGate.Clear();
+            }
             if (menuCanvas != null) menuCanvas.gameObject.SetActive(false);
-            PoppyUIInputGate.Clear();
             if (environmentRoot != null) environmentRoot.gameObject.SetActive(false);
             if (characterPreview != null) characterPreview.gameObject.SetActive(false);
             if (huggyPreview != null) huggyPreview.gameObject.SetActive(false);
