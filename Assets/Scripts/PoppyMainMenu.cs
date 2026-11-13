@@ -72,6 +72,8 @@ public class PoppyMainMenu : MonoBehaviour
     private void Start()
     {
         if (menuCamera == null) menuCamera = Camera.main;
+        // Keep the menu camera independent from animated/player rigs.
+        if (menuCamera != null) menuCamera.transform.SetParent(null, true);
         if (connectionManager == null) connectionManager = FindObjectOfType<ConnectionManafer>();
 
         if (connectionManager != null)
@@ -152,7 +154,21 @@ public class PoppyMainMenu : MonoBehaviour
         if (wasConnectedToSession || isTransitioning || currentView != MenuView.Main || menuCamera == null)
             return;
 
-        menuCamera.transform.rotation = mainCameraRotation;
+        if (currentView == MenuView.Main)
+        {
+            menuCamera.transform.position = mainCameraPosition;
+            menuCamera.transform.rotation = mainCameraRotation;
+        }
+        else if (currentView == MenuView.Shop)
+        {
+            menuCamera.transform.position = shopCameraPosition;
+            menuCamera.transform.rotation = shopCameraRotation;
+        }
+        else if (currentView == MenuView.Monsters)
+        {
+            menuCamera.transform.position = monsterCameraPosition;
+            menuCamera.transform.rotation = monsterCameraRotation;
+        }
     }
 
     private void BuildFactoryShowroom()
@@ -363,9 +379,6 @@ public class PoppyMainMenu : MonoBehaviour
             float delta = Input.mousePosition.x - dragStartX;
             characterPreview.rotation = Quaternion.Euler(0f, dragYaw + delta * mouseRotateSensitivity, 0f);
         }
-        else if (!Input.GetMouseButton(0))
-        {
-        }
     }
 
     private void UpdateMonsterTurntable()
@@ -380,9 +393,6 @@ public class PoppyMainMenu : MonoBehaviour
         {
             float delta = Input.mousePosition.x - dragStartX;
             huggyPreview.rotation = Quaternion.Euler(0f, dragYaw + delta * mouseRotateSensitivity, 0f);
-        }
-        else if (!Input.GetMouseButton(0))
-        {
         }
     }
 
@@ -581,6 +591,7 @@ public class PoppyMainMenu : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         RefreshShop();
+        ApplyPlayerSkin();
         TransitionCamera(shopCameraPosition, shopCameraRotation);
     }
 
@@ -599,6 +610,7 @@ public class PoppyMainMenu : MonoBehaviour
         Cursor.visible = true;
         RefreshMonsterSelection();
         ShowMonsterInBox();
+        ApplyMonsterSkin();
         TransitionCamera(monsterCameraPosition, monsterCameraRotation);
     }
 
@@ -669,6 +681,7 @@ public class PoppyMainMenu : MonoBehaviour
         selectedMonsterIndex = (selectedMonsterIndex + PoppyMonsterShop.SkinCount - 1) % PoppyMonsterShop.SkinCount;
         RefreshMonsterSelection();
         ShowMonsterInBox();
+        ApplyMonsterSkin();
     }
 
     private void NextMonster()
@@ -676,6 +689,7 @@ public class PoppyMainMenu : MonoBehaviour
         selectedMonsterIndex = (selectedMonsterIndex + 1) % PoppyMonsterShop.SkinCount;
         RefreshMonsterSelection();
         ShowMonsterInBox();
+        ApplyMonsterSkin();
     }
 
     private void ShowMonsterInBox()
