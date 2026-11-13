@@ -40,7 +40,7 @@ public class PoppyPauseMenu : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Escape))
         {
-            if (!isOpen && (PoppyUIInputGate.IsBlocked || PoppyUIInputGate.IsPointerOverUI()))
+            if (!isOpen && ((PoppyUIInputGate.IsBlocked && !PoppyUIInputGate.IsLobbyOpen) || PoppyUIInputGate.IsPointerOverUI()))
                 return;
             SetOpen(!isOpen);
         }
