@@ -17,7 +17,7 @@ public class PoppyMainMenu : MonoBehaviour
     public ConnectionManafer connectionManager;
 
     [Header("Factory background")]
-    public bool buildCorridorAtRuntime = true;
+    public bool buildCorridorAtRuntime = false;
     [Min(20f)] public float corridorLength = 42f;
     public Color corridorTint = new Color(0.045f, 0.052f, 0.06f);
     public Color warningLightColor = new Color(1f, 0.045f, 0.018f);
@@ -76,7 +76,7 @@ public class PoppyMainMenu : MonoBehaviour
             if (playerNameInput != null) connectionManager.nameInputField = playerNameInput;
         }
 
-        if (buildCorridorAtRuntime) BuildFactoryShowroom();
+        // No scene geometry is generated here: the level and showroom are authored in Unity.
         BuildInterface();
         CacheCameraShots();
         PrepareCharacterPreview();
