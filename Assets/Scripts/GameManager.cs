@@ -82,6 +82,25 @@ public class GameManager : NetworkBehaviour
 		StartCoroutine(StartGameLoop());
 	}
 
+	/// <summary>Starts an AI solo round automatically when the local host is the only player.</summary>
+	public bool TryStartSoloMatchFromLobby()
+	{
+		if (!IsServer || NetworkManager.Singleton == null || _gameStarted ||
+			PlayerPrefs.GetInt("Poppy.EnemyMode", 0) != 1 ||
+			NetworkManager.Singleton.ConnectedClientsList.Count != 1)
+			return false;
+
+		ulong hostClientId = NetworkManager.ServerClientId;
+		if (!_readyClients.Contains(hostClientId))
+			_readyClients.Add(hostClientId);
+
+		if (!CanStartMatch)
+			return false;
+
+		StartMatchFromLobby();
+		return _gameStarted;
+	}
+
 	public void RequestReturnToLobby()
 	{
 		if (!IsSpawned)
