@@ -3,8 +3,7 @@ using UnityEngine.SceneManagement;
 using Unity.Netcode;
 
 /// <summary>
-/// Automatically installs the runtime menu on the Lobby scene so no manual scene YAML
-/// surgery is needed. Assignments are resolved from existing scene objects by name/tag.
+/// Installs the menu and waiting-room UI only. The developer builds all 3D scenes in Unity.
 /// </summary>
 public static class PoppyMenuBootstrap
 {
@@ -27,7 +26,6 @@ public static class PoppyMenuBootstrap
             return;
 
         EnsureLobbyUI();
-        EnsureLobbyRoom();
 
         if (Object.FindObjectOfType<PoppyMainMenu>() != null)
             return;
@@ -114,19 +112,6 @@ public static class PoppyMenuBootstrap
         menu.connectionManager = connection;
         menu.characterPreview = playerPreview;
         menu.huggyPreview = huggyPreview;
-        menu.buildCorridorAtRuntime = true;
-    }
-
-    private static void EnsureLobbyRoom()
-    {
-        if (Object.FindObjectOfType<PoppyLobbyRoomBuilder>() != null)
-            return;
-
-        GameObject roomRoot = new GameObject("PoppyLobbyRoom_Runtime");
-        PoppyLobbyRoomBuilder room = roomRoot.AddComponent<PoppyLobbyRoomBuilder>();
-        GameManager manager = Object.FindObjectOfType<GameManager>();
-        if (manager != null)
-            room.anchor = manager.lobbySpawnPoint;
     }
 
     private static void EnsureLobbyUI()
