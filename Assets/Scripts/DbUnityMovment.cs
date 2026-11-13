@@ -262,6 +262,11 @@ public class DbUnityMovment : NetworkBehaviour
 
 	private void HandleRotation()
 	{
+		// En lobby, le curseur reste libre pour cliquer dans l'interface.
+		// La rotation ne reprend qu'une fois le curseur verrouillé.
+		if (Cursor.lockState != CursorLockMode.Locked)
+			return;
+
 		float num = Input.GetAxis("Mouse X") * mouseSensitivity;
 		transform.Rotate(Vector3.up * num);
 		if (cameraTransform != null)
