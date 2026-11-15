@@ -10,6 +10,7 @@ using Unity.Services.Lobbies.Models;
 /// Cinematic runtime front-end: static hero composition, camera-driven shop and monster
 /// showroom, horizontal-only mouse rotation, and Enter-to-play.
 /// </summary>
+[DefaultExecutionOrder(10000)]
 public class PoppyMainMenu : MonoBehaviour
 {
     [Header("Scene references")]
@@ -195,7 +196,21 @@ public class PoppyMainMenu : MonoBehaviour
     {
         if (menuCamera == null) menuCamera = Camera.main;
         FindMarkers();
-        // Keep the camera under its authored rig; world-space locking below prevents drift.
+
+        // La caméra du menu ne doit jamais rester enfant du rig/caméra du lobby :
+        // le mouvement ou la rotation du joueur/du rig faisait tourner le menu avec lui.
+        // Les points sont des repères monde indépendants ; on détache donc la caméra
+        // avant de mémoriser leurs positions et rotations.
+        if (menuCamera != null && menuCamera.transform.parent != null)
+            menuCamera.transform.SetParent(null, true);
+
+        if (mkMenuCam == null)
+            Debug.LogWarning("PoppyMainMenu: point 'MenuCameraPoint' introuvable ; position actuelle utilisée.", this);
+        if (mkShopCam == null)
+            Debug.LogWarning("PoppyMainMenu: point 'ShopPlayerCamera' introuvable ; cadrage boutique calculé automatiquement.", this);
+        if (mkMonsterCam == null && monsterNode == null)
+            Debug.LogWarning("PoppyMainMenu: point 'ShopMonsterCamera' introuvable ; cadrage monstre calculé automatiquement.", this);
+
         if (connectionManager == null) connectionManager = FindObjectOfType<ConnectionManafer>();
 
         if (connectionManager != null)
