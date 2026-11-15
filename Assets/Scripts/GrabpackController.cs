@@ -254,14 +254,31 @@ public class GrabpackController : NetworkBehaviour
 
 	private void HandleDoorDragging()
 	{
-		if (Input.GetMouseButton(0) && activeBlueDoor != null)
-		{
+		// La herse ne commence à bouger que lorsque la main du GrabPack est réellement
+		// arrivée sur son collider et y est attachée. Maintenir le clic la fait bouger.
+		if (Input.GetMouseButton(0) && IsHandAttachedToDoor(blueHand, activeBlueDoor))
 			activeBlueDoor.StartGrabInteraction();
-		}
-		if (Input.GetMouseButton(1) && activeRedDoor != null)
-		{
+
+		if (Input.GetMouseButton(1) && IsHandAttachedToDoor(redHand, activeRedDoor))
 			activeRedDoor.StartGrabInteraction();
+	}
+
+	private static bool IsHandAttachedToDoor(GrabpackHand hand, GrabpackDraggableDoor door)
+	{
+		if (hand == null || door == null || hand.CurrentState != GrabpackHand.HandState.Attached ||
+			hand.handObject == null)
+			return false;
+
+		// Le collider touché peut être sur un enfant de la porte : on remonte toute la hiérarchie.
+		Transform current = hand.handObject.transform.parent;
+		while (current != null)
+		{
+			if (current == door.transform)
+				return true;
+			current = current.parent;
 		}
+
+		return false;
 	}
 
 	private void HandleReelInPhysics()
