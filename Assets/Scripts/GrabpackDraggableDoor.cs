@@ -15,8 +15,8 @@ public class GrabpackDraggableDoor : NetworkBehaviour
 	[Tooltip("Course totale de la porte vers le bas (en mètres).")]
 	public float maxPullDistance = 3f;
 
-	[Tooltip("Vitesse de descente / remontée tant que le clic est maintenu (mètres par seconde).")]
-	public float moveSpeed = 1.1f;
+	[Tooltip("Vitesse volontairement lente de descente / remontée tant que la main reste accrochée (mètres par seconde).")]
+	public float moveSpeed = 0.7f;
 
 	[Tooltip("Obsolète (ancien système à la souris), conservé pour ne pas casser les scènes.")]
 	public float pullSpeed = 10f;
