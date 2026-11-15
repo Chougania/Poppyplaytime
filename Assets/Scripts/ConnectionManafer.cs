@@ -141,11 +141,40 @@ public class ConnectionManafer : MonoBehaviour
 
 		if (networkManager.IsListening)
 		{
-			Debug.LogWarning("[Netcode] A session is already active; cannot start offline solo.");
+			// Une session précédente se ferme encore : on la coupe puis on relance dès qu'elle est terminée.
+			Debug.LogWarning("[Netcode] Previous session still active; shutting it down before starting solo.");
+			networkManager.Shutdown();
+			StartCoroutine(StartSoloWhenIdle());
 			return;
 		}
 
+		StartSoloHostNow();
+	}
+
+	private System.Collections.IEnumerator StartSoloWhenIdle()
+	{
+		float timeout = 3f;
+		while (networkManager != null && networkManager.ShutdownInProgress && timeout > 0f)
+		{
+			timeout -= Time.unscaledDeltaTime;
+			yield return null;
+		}
+		yield return null;
+		if (networkManager != null && !networkManager.IsListening)
+			StartSoloHostNow();
+		else
+			Debug.LogError("[Netcode] Solo could not start: the previous session did not close.");
+	}
+
+	private void StartSoloHostNow()
+	{
 		SavePlayerName();
+
+		// Le solo ne doit jamais dépendre d'un ancien code Relay : on force le transport local (127.0.0.1).
+		UnityTransport transport = networkManager.GetComponent<UnityTransport>();
+		if (transport != null)
+			transport.SetConnectionData("127.0.0.1", 7777);
+
 		if (networkManager.StartHost())
 		{
 			Debug.Log("[Netcode] Offline solo host started.");

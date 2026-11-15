@@ -43,6 +43,398 @@ public class GameManager : NetworkBehaviour
 	private bool _gameStarted;
 	private int _roundId;
 
+	// ---- objectifs : générateurs à réparer puis sortie
+	private readonly NetworkVariable<int> _genTotal = new NetworkVariable<int>(0);
+	private readonly NetworkVariable<int> _genDone = new NetworkVariable<int>(0);
+	private readonly NetworkVariable<bool> _exitOpen = new NetworkVariable<bool>(false);
+	private readonly NetworkVariable<float> _g0 = new NetworkVariable<float>(0f);
+	private readonly NetworkVariable<float> _g1 = new NetworkVariable<float>(0f);
+	private readonly NetworkVariable<float> _g2 = new NetworkVariable<float>(0f);
+	private readonly NetworkVariable<float> _g3 = new NetworkVariable<float>(0f);
+	private readonly NetworkVariable<Vector3> _p0 = new NetworkVariable<Vector3>(Vector3.zero);
+	private readonly NetworkVariable<Vector3> _p1 = new NetworkVariable<Vector3>(Vector3.zero);
+	private readonly NetworkVariable<Vector3> _p2 = new NetworkVariable<Vector3>(Vector3.zero);
+	private readonly NetworkVariable<Vector3> _p3 = new NetworkVariable<Vector3>(Vector3.zero);
+	private readonly NetworkVariable<Vector3> _exitPos = new NetworkVariable<Vector3>(Vector3.zero);
+
+	private readonly HashSet<ulong> _survivorsIn = new HashSet<ulong>();
+	private float _lastNoiseTime = -10f;
+	private float _soloAutoStartAfter;
+	private ulong _monsterId;
+	private bool _hasMonster;
+	private int _escaped;
+
+	public int GenTotal { get { return _genTotal.Value; } }
+	public int GenDone { get { return _genDone.Value; } }
+	public bool ExitOpen { get { return _exitOpen.Value; } }
+	public Vector3 ExitPos { get { return _exitPos.Value; } }
+
+	public float GenProgress(int i)
+	{
+		switch (i)
+		{
+		case 0: return _g0.Value;
+		case 1: return _g1.Value;
+		case 2: return _g2.Value;
+		default: return _g3.Value;
+		}
+	}
+
+	public Vector3 GenPos(int i)
+	{
+		switch (i)
+		{
+		case 0: return _p0.Value;
+		case 1: return _p1.Value;
+		case 2: return _p2.Value;
+		default: return _p3.Value;
+		}
+	}
+
+	private void SetProgress(int i, float v)
+	{
+		switch (i)
+		{
+		case 0: _g0.Value = v; break;
+		case 1: _g1.Value = v; break;
+		case 2: _g2.Value = v; break;
+		default: _g3.Value = v; break;
+		}
+	}
+
+	private void SetupObjectives(int survivors)
+	{
+		int total = Mathf.Clamp(survivors + 1, 2, 4);
+		Vector3[] gens;
+		Vector3 exit;
+		ObjectiveWorld.ComputePlaces(survivorSpawnPoints, monsterSpawnPoint, transform, total, out gens, out exit);
+		_g0.Value = 0f; _g1.Value = 0f; _g2.Value = 0f; _g3.Value = 0f;
+		_p0.Value = gens[0];
+		_p1.Value = gens.Length > 1 ? gens[1] : gens[0];
+		_p2.Value = gens.Length > 2 ? gens[2] : gens[0];
+		_p3.Value = gens.Length > 3 ? gens[3] : gens[0];
+		_exitPos.Value = exit;
+		_genDone.Value = 0;
+		_exitOpen.Value = false;
+		_genTotal.Value = total;
+	}
+
+	private void ClearObjectives()
+	{
+		_genTotal.Value = 0;
+		_genDone.Value = 0;
+		_exitOpen.Value = false;
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	public void RepairGeneratorServerRpc(int index, float seconds, ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		ulong sender = rpcParams.Receive.SenderClientId;
+		if (!_gameStarted || !_survivorsIn.Contains(sender) || index < 0 || index >= _genTotal.Value)
+		{
+			return;
+		}
+		float progress = GenProgress(index);
+		if (progress >= 1f)
+		{
+			return;
+		}
+		NetworkClient client;
+		if (NetworkManager.Singleton == null || !NetworkManager.Singleton.ConnectedClients.TryGetValue(sender, out client) || client.PlayerObject == null)
+		{
+			return;
+		}
+		if (Vector3.Distance(client.PlayerObject.transform.position, GenPos(index)) > 5f)
+		{
+			return;
+		}
+		progress = Mathf.Min(1f, progress + Mathf.Clamp(seconds, 0f, 0.7f) / 28f);
+		SetProgress(index, progress);
+
+		// le bruit de la réparation attire le monstre (joueur ou IA)
+		if (Time.time - _lastNoiseTime > 3f || progress >= 1f)
+		{
+			_lastNoiseTime = Time.time;
+			HuggyHunterAI ai = FindObjectOfType<HuggyHunterAI>();
+			if (ai != null)
+			{
+				ai.HearNoise(GenPos(index));
+			}
+			if (_hasMonster)
+			{
+				ClientRpcParams p = new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new ulong[1] { _monsterId } } };
+				NoisePingClientRpc(GenPos(index), p);
+			}
+		}
+		if (progress >= 1f)
+		{
+			_genDone.Value++;
+			if (_genDone.Value >= _genTotal.Value)
+			{
+				_exitOpen.Value = true;
+				SetRoleNotificationClientRpc("TOUS LES GÉNÉRATEURS SONT ACTIFS ! LA SORTIE EST OUVERTE !");
+			}
+		}
+	}
+
+	[ClientRpc]
+	private void NoisePingClientRpc(Vector3 pos, ClientRpcParams rpcParams = default(ClientRpcParams))
+	{
+		if (ObjectiveWorld.Instance != null)
+		{
+			ObjectiveWorld.Instance.AddPing(pos);
+		}
+	}
+
+	// ------------------------------------------------------------------ vies, coups et cartons
+	private readonly Dictionary<ulong, float> _invulnUntil = new Dictionary<ulong, float>();
+	private readonly Dictionary<ulong, float> _freeProgress = new Dictionary<ulong, float>();
+	private readonly Dictionary<ulong, float> _freeLast = new Dictionary<ulong, float>();
+	private readonly HashSet<ulong> _escapedClients = new HashSet<ulong>();
+	private int _boxCount;
+	private string _lastWinnerText = "";
+
+	private DbUnityMovment PlayerOf(ulong clientId)
+	{
+		NetworkClient client;
+		if (NetworkManager.Singleton != null && NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out client) && client.PlayerObject != null)
+			return client.PlayerObject.GetComponent<DbUnityMovment>();
+		return null;
+	}
+
+	private ClientRpcParams Only(ulong clientId)
+	{
+		return new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new ulong[1] { clientId } } };
+	}
+
+	private void ResetAllLives()
+	{
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+		foreach (NetworkClient client in NetworkManager.Singleton.ConnectedClientsList)
+		{
+			DbUnityMovment mv = PlayerOf(client.ClientId);
+			if (mv != null)
+				mv.ServerResetLife();
+		}
+	}
+
+	/// <summary>Serveur : un coup de monstre. 3 coups = encartonné (une vie perdue). Plus de vie = éliminé pour la manche.</summary>
+	public void ServerDamageSurvivor(ulong victimId)
+	{
+		if (!IsServer || !_gameStarted || !_survivorsIn.Contains(victimId))
+			return;
+
+		DbUnityMovment mv = PlayerOf(victimId);
+		if (mv == null || mv.IsBoxed)
+			return;
+
+		float until;
+		if (_invulnUntil.TryGetValue(victimId, out until) && Time.time < until)
+			return;
+		_invulnUntil[victimId] = Time.time + 2f;
+
+		int hits = mv.ServerAddHit();
+		if (hits < DbUnityMovment.HitsToBox)
+		{
+			mv.ServerHitFeedback();
+			return;
+		}
+		BoxSurvivor(victimId, mv);
+	}
+
+	private void BoxSurvivor(ulong victimId, DbUnityMovment mv)
+	{
+		int lives = mv.ServerLoseLife();
+		if (lives <= 0)
+		{
+			// dernière vie perdue : élimination définitive (plus de points pour ce joueur)
+			if (lobbySpawnPoint != null)
+				ExecuteTargetedTeleport(victimId, lobbySpawnPoint.position, isMonster: false, isSurvivor: false);
+			_survivorsIn.Remove(victimId);
+			return;
+		}
+
+		mv.ServerSetBoxed(true);
+		_boxCount++;
+		_freeProgress[victimId] = 0f;
+		StartCoroutine(AutoReleaseBoxed(victimId, _roundId));
+	}
+
+	private bool HasFreeHelper(ulong boxedId)
+	{
+		foreach (ulong id in _survivorsIn)
+		{
+			if (id == boxedId)
+				continue;
+			DbUnityMovment other = PlayerOf(id);
+			if (other != null && !other.IsBoxed)
+				return true;
+		}
+		return false;
+	}
+
+	private void FreeSurvivor(ulong clientId, DbUnityMovment mv)
+	{
+		mv.ServerSetBoxed(false);
+		_freeProgress.Remove(clientId);
+		_invulnUntil[clientId] = Time.time + 3f;
+	}
+
+	// Si personne ne vient libérer le survivant, le carton s'ouvre tout seul (la vie reste perdue).
+	private IEnumerator AutoReleaseBoxed(ulong victimId, int roundId)
+	{
+		float waited = 0f;
+		while (true)
+		{
+			yield return new WaitForSeconds(1f);
+			waited += 1f;
+			if (!_gameStarted || roundId != _roundId)
+				yield break;
+			DbUnityMovment mv = PlayerOf(victimId);
+			if (mv == null || !mv.IsBoxed)
+				yield break;
+			float limit = HasFreeHelper(victimId) ? 40f : 15f;
+			if (waited >= limit)
+			{
+				FreeSurvivor(victimId, mv);
+				yield break;
+			}
+		}
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	public void FreeBoxedServerRpc(ulong boxedClientId, float seconds, ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		ulong sender = rpcParams.Receive.SenderClientId;
+		if (!_gameStarted || sender == boxedClientId || !_survivorsIn.Contains(sender))
+			return;
+		DbUnityMovment helper = PlayerOf(sender);
+		DbUnityMovment boxed = PlayerOf(boxedClientId);
+		if (helper == null || boxed == null || helper.IsBoxed || !boxed.IsBoxed)
+			return;
+		if (Vector3.Distance(helper.transform.position, boxed.transform.position) > 4.5f)
+			return;
+
+		float last;
+		if (_freeLast.TryGetValue(boxedClientId, out last) && Time.time - last > 1.5f)
+			_freeProgress[boxedClientId] = 0f;
+		_freeLast[boxedClientId] = Time.time;
+
+		float progress;
+		_freeProgress.TryGetValue(boxedClientId, out progress);
+		progress += Mathf.Clamp(seconds, 0f, 0.7f) / 3f;
+		if (progress >= 1f)
+			FreeSurvivor(boxedClientId, boxed);
+		else
+			_freeProgress[boxedClientId] = progress;
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	public void PullBoxedServerRpc(ulong boxedClientId, Vector3 pullerPosition, ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		ulong sender = rpcParams.Receive.SenderClientId;
+		if (!_gameStarted || sender == boxedClientId || !_survivorsIn.Contains(sender))
+			return;
+		DbUnityMovment puller = PlayerOf(sender);
+		DbUnityMovment boxed = PlayerOf(boxedClientId);
+		if (puller == null || boxed == null || puller.IsBoxed || !boxed.IsBoxed)
+			return;
+		if (Vector3.Distance(puller.transform.position, boxed.transform.position) > 40f)
+			return;
+		boxed.ServerPullBoxed(pullerPosition);
+	}
+
+	private void GrantRoundRewards(bool grant)
+	{
+		if (!grant || NetworkManager.Singleton == null)
+			return;
+
+		foreach (NetworkClient client in NetworkManager.Singleton.ConnectedClientsList)
+		{
+			ulong id = client.ClientId;
+			int credits;
+			int tickets = 0;
+			string label;
+			if (_hasMonster && id == _monsterId)
+			{
+				credits = 40 + 30 * _boxCount;
+				label = "MONSTRE";
+			}
+			else if (_escapedClients.Contains(id))
+			{
+				credits = 100;
+				tickets = 1;
+				label = "ÉVADÉ";
+			}
+			else if (_eliminatedClients.Contains(id))
+			{
+				credits = 0;
+				label = "ÉLIMINÉ : AUCUN POINT";
+			}
+			else
+			{
+				credits = 60;
+				label = "SURVIVANT";
+			}
+			string text = _lastWinnerText + "   -   " + label + (credits > 0 ? "  +" + credits : "");
+			RoundRewardClientRpc(credits, tickets, text, Only(id));
+		}
+	}
+
+	[ClientRpc]
+	private void RoundRewardClientRpc(int credits, int tickets, string text, ClientRpcParams rpcParams = default(ClientRpcParams))
+	{
+		if (credits > 0)
+			PoppyShop.AddCredits(credits);
+		if (tickets > 0)
+			PoppyShop.AddTickets(tickets);
+		if (roleNotificationText != null)
+		{
+			roleNotificationText.text = text;
+			CancelInvoke("ClearRoleText");
+			Invoke("ClearRoleText", 7f);
+		}
+	}
+
+	[ServerRpc(RequireOwnership = false)]
+	public void EscapeServerRpc(ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		ulong sender = rpcParams.Receive.SenderClientId;
+		NetworkClient client;
+		if (!_gameStarted || !_exitOpen.Value || !_survivorsIn.Contains(sender) || NetworkManager.Singleton == null ||
+		    !NetworkManager.Singleton.ConnectedClients.TryGetValue(sender, out client) || client.PlayerObject == null)
+		{
+			return;
+		}
+		if (Vector3.Distance(client.PlayerObject.transform.position, _exitPos.Value) > 4.5f)
+		{
+			return;
+		}
+		_survivorsIn.Remove(sender);
+		_escapedClients.Add(sender);
+		_escaped++;
+		if (lobbySpawnPoint != null)
+		{
+			ExecuteTargetedTeleport(sender, lobbySpawnPoint.position, isMonster: false, isSurvivor: true);
+		}
+		ClientRpcParams p = new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new ulong[1] { sender } } };
+		EscapeBonusClientRpc(60, p);
+	}
+
+	[ClientRpc]
+	private void EscapeBonusClientRpc(int credits, ClientRpcParams rpcParams = default(ClientRpcParams))
+	{
+		PoppyShop.AddCredits(credits);
+		ProceduralAudio.Play2D(ProceduralAudio.Success, 0.9f);
+		if (roleNotificationText != null)
+		{
+			roleNotificationText.text = "VOUS VOUS ÉCHAPPEZ !  +" + credits;
+			CancelInvoke("ClearRoleText");
+			Invoke("ClearRoleText", 6f);
+		}
+	}
+
 	public bool IsGameStarted => _netGameStarted.Value;
 	public bool IsClientReady(ulong clientId) => _readyClients.Contains(clientId);
 	public bool IsClientEliminated(ulong clientId) => _eliminatedClients.Contains(clientId);
@@ -56,9 +448,8 @@ public class GameManager : NetworkBehaviour
 
 			int count = NetworkManager.Singleton.ConnectedClientsList.Count;
 			bool useAI = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1;
-			bool validMode = useAI
-				? aiMonsterPrefab != null && monsterSpawnPoint != null && count >= 1
-				: count >= 2;
+			// En solo, le hôte seul suffit : le monstre IA est optionnel (avertissement si non configuré).
+			bool validMode = useAI ? count >= 1 : count >= 2;
 
 			if (!validMode)
 				return false;
@@ -85,7 +476,7 @@ public class GameManager : NetworkBehaviour
 	/// <summary>Starts an AI solo round automatically when the local host is the only player.</summary>
 	public bool TryStartSoloMatchFromLobby()
 	{
-		if (!IsServer || NetworkManager.Singleton == null || _gameStarted ||
+		if (!IsServer || NetworkManager.Singleton == null || _gameStarted || Time.unscaledTime < _soloAutoStartAfter ||
 			PlayerPrefs.GetInt("Poppy.EnemyMode", 0) != 1 ||
 			NetworkManager.Singleton.ConnectedClientsList.Count != 1)
 			return false;
@@ -178,6 +569,13 @@ public class GameManager : NetworkBehaviour
 		_netTimer.OnValueChanged += UpdateTimerUI;
 		UpdateTimerUI(0, _netTimer.Value);
 
+		ObjectiveWorld ow = gameObject.GetComponent<ObjectiveWorld>();
+		if (ow == null)
+		{
+			ow = gameObject.AddComponent<ObjectiveWorld>();
+		}
+		ow.Init(this);
+
 		if (!IsServer || NetworkManager.Singleton == null)
 			return;
 
@@ -236,6 +634,15 @@ public class GameManager : NetworkBehaviour
 	{
 		if (IsServer && _readyClients.Contains(clientId))
 			_readyClients.Remove(clientId);
+		if (IsServer)
+		{
+			_survivorsIn.Remove(clientId);
+			if (_hasMonster && clientId == _monsterId)
+			{
+				_hasMonster = false;
+				_survivorsIn.Clear();
+			}
+		}
 	}
 
 	private void SpawnAndSyncNetworkedObjects()
@@ -262,6 +669,15 @@ public class GameManager : NetworkBehaviour
 		_gameStarted = true;
 		_netGameStarted.Value = true;
 		_eliminatedClients.Clear();
+		_survivorsIn.Clear();
+		_hasMonster = false;
+		_escaped = 0;
+		_escapedClients.Clear();
+		_boxCount = 0;
+		_invulnUntil.Clear();
+		_freeProgress.Clear();
+		_freeLast.Clear();
+		ResetAllLives();
 		ResetRoundProgression();
 		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
 		SetRoleNotificationClientRpc("Assigning Roles...");
@@ -272,6 +688,22 @@ public class GameManager : NetworkBehaviour
 		AssignRolesAndSpawn();
 		if (!_gameStarted || currentRoundId != _roundId)
 			yield break;
+		if (_survivorsIn.Count == 0)
+		{
+			Debug.LogError("Round cancelled: no player object could be assigned as survivor.");
+			EndGame(false);
+			yield break;
+		}
+		try
+		{
+			SetupObjectives(_survivorsIn.Count);
+		}
+		catch (System.Exception ex)
+		{
+			// un souci de placement ne doit jamais empêcher la manche de démarrer
+			Debug.LogError("Objectives setup failed, round continues without them: " + ex.Message);
+			ClearObjectives();
+		}
 
 		while (IsServer && currentRoundId == _roundId && _gameStarted && _netTimer.Value > 0)
 		{
@@ -279,6 +711,9 @@ public class GameManager : NetworkBehaviour
 			if (currentRoundId != _roundId || !_gameStarted)
 				yield break;
 			_netTimer.Value = Mathf.Max(0, _netTimer.Value - 1);
+			// plus aucun survivant en jeu (tous tués ou évadés) : fin de manche anticipée
+			if (_survivorsIn.Count == 0)
+				break;
 		}
 		if (currentRoundId == _roundId && _gameStarted)
 			EndGame();
@@ -299,12 +734,12 @@ public class GameManager : NetworkBehaviour
 			return;
 
 		bool useAI = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1;
-		if (useAI && (aiMonsterPrefab == null || monsterSpawnPoint == null))
+		bool aiAvailable = aiMonsterPrefab != null && monsterSpawnPoint != null;
+		if (useAI && !aiAvailable)
 		{
-			Debug.LogError("AI mode cannot start: assign aiMonsterPrefab and monsterSpawnPoint in GameManager.", this);
-			_gameStarted = false;
-			_netGameStarted.Value = false;
-			return;
+			// Ne bloque plus le solo : la manche démarre sans Huggy, avec les objectifs.
+			Debug.LogError("AI monster missing: assign aiMonsterPrefab and monsterSpawnPoint in GameManager. Starting without Huggy.", this);
+			SetRoleNotificationClientRpc("HUGGY IA NON CONFIGURÉ (aiMonsterPrefab / monsterSpawnPoint)");
 		}
 
 		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
@@ -324,12 +759,16 @@ public class GameManager : NetworkBehaviour
 					? survivorSpawnPoints[survivorIndex % survivorSpawnPoints.Length].position
 					: transform.position;
 				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: false, isSurvivor: true);
-				NotifySingleClientRole(client.ClientId, "HUGGY IS HUNTING YOU. SURVIVE!");
+				NotifySingleClientRole(client.ClientId, "HUGGY IS HUNTING YOU. REPAIR THE GENERATORS, THEN ESCAPE!");
+				_survivorsIn.Add(client.ClientId);
 				survivorIndex++;
 			}
 
-			spawnedAiMonster = Instantiate(aiMonsterPrefab, monsterSpawnPoint.position, monsterSpawnPoint.rotation);
-			spawnedAiMonster.Spawn();
+			if (aiAvailable)
+			{
+				spawnedAiMonster = Instantiate(aiMonsterPrefab, monsterSpawnPoint.position, monsterSpawnPoint.rotation);
+				spawnedAiMonster.Spawn();
+			}
 			return;
 		}
 
@@ -346,6 +785,8 @@ public class GameManager : NetworkBehaviour
 				Vector3 spawn = monsterSpawnPoint != null ? monsterSpawnPoint.position : transform.position;
 				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: true, isSurvivor: false);
 				NotifySingleClientRole(client.ClientId, "YOU ARE THE MONSTER! HUNT THE HIDERS!");
+				_monsterId = client.ClientId;
+				_hasMonster = true;
 			}
 			else
 			{
@@ -353,7 +794,8 @@ public class GameManager : NetworkBehaviour
 					? survivorSpawnPoints[survivorSpawnIndex % survivorSpawnPoints.Length].position
 					: transform.position;
 				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: false, isSurvivor: true);
-				NotifySingleClientRole(client.ClientId, "YOU ARE A HIDER! SURVIVE!");
+				NotifySingleClientRole(client.ClientId, "YOU ARE A HIDER! REPAIR THE GENERATORS, THEN ESCAPE!");
+				_survivorsIn.Add(client.ClientId);
 				survivorSpawnIndex++;
 			}
 		}
@@ -364,7 +806,10 @@ public class GameManager : NetworkBehaviour
 		if (IsServer)
 		{
 			if (!isSurvivor && !isMonster)
+			{
 				_eliminatedClients.Add(clientId);
+				_survivorsIn.Remove(clientId);
+			}
 			else if (isSurvivor)
 				_eliminatedClients.Remove(clientId);
 		}
@@ -519,16 +964,20 @@ public class GameManager : NetworkBehaviour
 			return;
 
 		_roundId++;
+		_soloAutoStartAfter = Time.unscaledTime + 10f;
+		bool wasStarted = _gameStarted;
 		_gameStarted = false;
 		_netGameStarted.Value = false;
+		ClearObjectives();
+		_survivorsIn.Clear();
+		_lastWinnerText = _escaped > 0 ? "LES SURVIVANTS S'ÉCHAPPENT !  (" + _escaped + ")" : "LE MONSTRE A GAGNÉ...";
+		// Les points ne vont qu'aux joueurs encore en vie ou évadés : un joueur éliminé ne gagne rien.
+		GrantRoundRewards(wasStarted && grantRewards);
 		_eliminatedClients.Clear();
 		_readyClients.Clear();
 		ResetRoundProgression();
-		if (grantRewards)
-		{
-			GrantMatchCreditsClientRpc(100);
-			GrantMatchTicketsClientRpc(1);
-		}
+		ResetAllLives();
+		_escapedClients.Clear();
 		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
 			spawnedAiMonster.Despawn(true);
 		spawnedAiMonster = null;

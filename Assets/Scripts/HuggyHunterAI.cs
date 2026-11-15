@@ -112,6 +112,19 @@ public class HuggyHunterAI : NetworkBehaviour
         networkMonsterSkin.OnValueChanged -= OnMonsterSkinChanged;
     }
 
+    /// <summary>Serveur : un bruit (réparation de générateur) attire Huggy vers cette position.</summary>
+    public void HearNoise(Vector3 position)
+    {
+        if (!IsServer || !IsSpawned || !enabled || agent == null || !agent.enabled || !agent.isOnNavMesh)
+            return;
+        if (State == HunterState.Chase || State == HunterState.Attack)
+            return;
+
+        lastKnownPosition = position;
+        State = HunterState.Search;
+        agent.SetDestination(position);
+    }
+
     private void Update()
     {
         UpdateAnimator();
@@ -158,7 +171,8 @@ public class HuggyHunterAI : NetworkBehaviour
             if (candidate == null || !candidate.IsSpawned ||
                 candidate.survivorModelContainer == null ||
                 !candidate.survivorModelContainer.activeInHierarchy ||
-                (gameManager != null && gameManager.IsClientEliminated(candidate.OwnerClientId)))
+                (gameManager != null && gameManager.IsClientEliminated(candidate.OwnerClientId)) ||
+                candidate.IsBoxed)
                 continue;
 
             float distance = Vector3.Distance(transform.position, candidate.transform.position);
@@ -343,10 +357,10 @@ public class HuggyHunterAI : NetworkBehaviour
         if (victim != null && victim.IsSpawned &&
             Vector3.Distance(transform.position, victim.transform.position) <= attackDistance + 0.75f)
         {
+            // Un coup, pas un one-shot : 3 coups = le survivant est encartonné (voir GameManager.ServerDamageSurvivor).
             GameManager manager = FindObjectOfType<GameManager>();
-            if (manager != null && manager.lobbySpawnPoint != null)
-                manager.ExecuteTargetedTeleport(victimId, manager.lobbySpawnPoint.position,
-                    isMonster: false, isSurvivor: false);
+            if (manager != null)
+                manager.ServerDamageSurvivor(victimId);
         }
 
         target = null;
@@ -407,9 +421,43 @@ public class HuggyHunterAI : NetworkBehaviour
         if (animator == null)
             return;
 
-        animator.SetFloat("Speed", networkSpeed.Value);
-        animator.SetBool("IsMoving", networkSpeed.Value > 0.12f);
-        animator.SetBool("IsChasing", networkState.Value == (byte)HunterState.Chase);
+        // Le contrôleur "Huggy Wuggy New" ne passe en marche / course que via IsWalking / IsSprinting.
+        bool moving = networkSpeed.Value > 0.12f;
+        bool chasing = networkState.Value == (byte)HunterState.Chase;
+        SetAnimFloat("Speed", networkSpeed.Value);
+        SetAnimBool("IsWalking", moving && !chasing);
+        SetAnimBool("IsSprinting", moving && chasing);
+        SetAnimBool("IsCrouching", false);
+        SetAnimBool("IsMoving", moving);
+        SetAnimBool("IsChasing", chasing);
+    }
+
+    private System.Collections.Generic.HashSet<string> animatorParams;
+
+    private bool HasAnimParam(string paramName)
+    {
+        if (animatorParams == null)
+        {
+            animatorParams = new System.Collections.Generic.HashSet<string>();
+            if (animator != null && animator.runtimeAnimatorController != null)
+            {
+                foreach (AnimatorControllerParameter p in animator.parameters)
+                    animatorParams.Add(p.name);
+            }
+        }
+        return animatorParams.Contains(paramName);
+    }
+
+    private void SetAnimBool(string paramName, bool value)
+    {
+        if (HasAnimParam(paramName))
+            animator.SetBool(paramName, value);
+    }
+
+    private void SetAnimFloat(string paramName, float value)
+    {
+        if (HasAnimParam(paramName))
+            animator.SetFloat(paramName, value);
     }
 
     private void OnDrawGizmosSelected()

@@ -70,9 +70,131 @@ public class PoppyMainMenu : MonoBehaviour
     private float dragYaw;
     private float autoYaw;
 
+    // ---- Points de scène optionnels : crée un objet vide avec ce nom dans la scène et place-le où tu veux.
+    //   MenuCameraPoint    caméra du menu principal
+    //   SpawnPlayerMenu    joueur affiché dans le menu principal
+    //   SpawnHuggyMenu     Huggy affiché dans le menu principal (fait peur)
+    //   ShopPlayerSpawn    joueur dans la boutique de cosmétiques
+    //   ShopPlayerCamera   caméra de la boutique de cosmétiques
+    //   ShopMonsterSpawn   Huggy dans la boutique des monstres
+    //   ShopMonsterCamera  caméra de la boutique des monstres
+    private Transform mkMenuCam;
+    private Transform mkPlayerMenu;
+    private Transform mkHuggyMenu;
+    private Transform mkShopPlayer;
+    private Transform mkShopCam;
+    private Transform mkShopMonster;
+    private Transform mkMonsterCam;
+    private Transform huggyMenu;
+    private MonsterShopNode monsterNode;
+    private Vector3 monsterCamBase;
+    private float monsterZoom;
+    private float monsterZoomTarget;
+    private int lastNodeSkin = -1;
+    private Vector3 mainCharPos;
+    private Quaternion mainCharRot = Quaternion.identity;
+    private bool hasMainCharPose;
+
+    private static Transform FindMarker(string markerName)
+    {
+        Transform[] all = Resources.FindObjectsOfTypeAll<Transform>();
+        for (int i = 0; i < all.Length; i++)
+        {
+            Transform t = all[i];
+            if (t != null && t.name == markerName && t.gameObject.scene.IsValid())
+                return t;
+        }
+        return null;
+    }
+
+    private void FindMarkers()
+    {
+        mkMenuCam = FindMarker("MenuCameraPoint");
+        mkPlayerMenu = FindMarker("SpawnPlayerMenu");
+        mkHuggyMenu = FindMarker("SpawnHuggyMenu");
+        mkShopPlayer = FindMarker("ShopPlayerSpawn");
+        mkShopCam = FindMarker("ShopPlayerCamera");
+        mkShopMonster = FindMarker("ShopMonsterSpawn");
+        mkMonsterCam = FindMarker("ShopMonsterCamera");
+
+        // Le node MonsterShopNode (si présent dans la scène) prend le dessus sur les points simples.
+        monsterNode = FindObjectOfType<MonsterShopNode>(true);
+        if (monsterNode != null)
+        {
+            mkShopMonster = monsterNode.MonsterAnchor;
+            if (monsterNode.CameraAnchor != null) mkMonsterCam = monsterNode.CameraAnchor;
+        }
+    }
+
+    private void ResumePreviewAnimator(Transform root)
+    {
+        if (root == null) return;
+        Animator[] animators = root.GetComponentsInChildren<Animator>(true);
+        for (int i = 0; i < animators.Length; i++)
+        {
+            animators[i].speed = 1f;
+            animators[i].applyRootMotion = false;
+        }
+    }
+
+    // Flèches / A-D : change de skin en direct. Molette : zoom. Espace : acheter / équiper.
+    private void UpdateMonsterNodeInput()
+    {
+        if (isTransitioning || IsInputFieldFocused()) return;
+        if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A)) PreviousMonster();
+        if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D)) NextMonster();
+        if (Input.GetKeyDown(KeyCode.Space)) SelectMonster();
+
+        float range = monsterNode != null ? monsterNode.zoomRange : 2f;
+        float scroll = Input.mouseScrollDelta.y;
+        if (Mathf.Abs(scroll) > 0.01f && !IsPointerOverUI())
+            monsterZoomTarget = Mathf.Clamp(monsterZoomTarget + scroll * 0.5f, -range, range);
+        monsterZoom = Mathf.Lerp(monsterZoom, monsterZoomTarget, Mathf.Clamp01(Time.unscaledDeltaTime * 8f));
+        monsterCameraPosition = monsterCamBase + monsterCameraRotation * Vector3.forward * monsterZoom;
+
+        if (monsterNode != null && monsterNode.autoRotateSpeed > 0f && huggyPreview != null &&
+            huggyPreview.gameObject.activeSelf && !Input.GetMouseButton(0))
+            huggyPreview.Rotate(0f, monsterNode.autoRotateSpeed * Time.unscaledDeltaTime, 0f, Space.World);
+    }
+
+    private void MoveCharacterTo(Transform marker)
+    {
+        if (characterPreview == null) return;
+        if (marker != null)
+            characterPreview.SetPositionAndRotation(marker.position, marker.rotation);
+        else if (hasMainCharPose)
+            characterPreview.SetPositionAndRotation(mainCharPos, mainCharRot);
+    }
+
+    private void PlaceMonsterAtMarker()
+    {
+        if (huggyPreview == null || mkShopMonster == null) return;
+        huggyPreview.SetParent(null, true);
+        huggyPreview.SetPositionAndRotation(mkShopMonster.position, mkShopMonster.rotation);
+        if (monsterNode != null && monsterNode.playIdleAnimation)
+            ResumePreviewAnimator(huggyPreview);
+    }
+
+    private void CreateHuggyMenuDisplay()
+    {
+        if (mkHuggyMenu == null || huggyPreview == null) return;
+        GameObject clone = Instantiate(huggyPreview.gameObject, mkHuggyMenu.position, mkHuggyMenu.rotation);
+        clone.name = "Huggy menu display";
+        foreach (Unity.Netcode.NetworkBehaviour nb in clone.GetComponentsInChildren<Unity.Netcode.NetworkBehaviour>(true))
+            Destroy(nb);
+        foreach (Unity.Netcode.NetworkObject no in clone.GetComponentsInChildren<Unity.Netcode.NetworkObject>(true))
+            Destroy(no);
+        huggyMenu = clone.transform;
+        DisablePreviewBehaviours(huggyMenu);
+        DisablePreviewPhysics(huggyMenu);
+        clone.SetActive(true);
+        ResumePreviewAnimator(huggyMenu);
+    }
+
     private void Start()
     {
         if (menuCamera == null) menuCamera = Camera.main;
+        FindMarkers();
         // Keep the camera under its authored rig; world-space locking below prevents drift.
         if (connectionManager == null) connectionManager = FindObjectOfType<ConnectionManafer>();
 
@@ -90,6 +212,7 @@ public class PoppyMainMenu : MonoBehaviour
         CacheCameraShots();
         PrepareCharacterPreview();
         PrepareMonsterPreview();
+        CreateHuggyMenuDisplay();
 
         PoppyUIInputGate.Clear();
         PoppyUIInputGate.SetMenuOpen(true);
@@ -103,6 +226,8 @@ public class PoppyMainMenu : MonoBehaviour
     {
         bool connected = connectionManager != null && connectionManager.networkManager != null &&
             connectionManager.networkManager.IsListening;
+        if (huggyMenu != null)
+            huggyMenu.gameObject.SetActive(!connected && currentView == MenuView.Main);
         if (connected)
         {
             if (!wasConnectedToSession)
@@ -143,7 +268,10 @@ public class PoppyMainMenu : MonoBehaviour
         if (currentView == MenuView.Shop)
             UpdatePlayerTurntable();
         else if (currentView == MenuView.Monsters)
+        {
             UpdateMonsterTurntable();
+            UpdateMonsterNodeInput();
+        }
 
         if (currentView == MenuView.Main && !IsInputFieldFocused() &&
             (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
@@ -303,6 +431,29 @@ public class PoppyMainMenu : MonoBehaviour
             : transform.position + new Vector3(0f, 2f, 17f);
         monsterCameraPosition = monsterTarget + new Vector3(0f, 1.1f, -9.5f);
         monsterCameraRotation = Quaternion.LookRotation(monsterTarget - monsterCameraPosition);
+
+        // Points de scène personnalisés (optionnels)
+        if (mkMenuCam != null)
+        {
+            mainCameraPosition = mkMenuCam.position;
+            mainCameraRotation = mkMenuCam.rotation;
+            menuCamera.transform.SetPositionAndRotation(mainCameraPosition, mainCameraRotation);
+        }
+        if (mkShopCam != null)
+        {
+            shopCameraPosition = mkShopCam.position;
+            shopCameraRotation = mkShopCam.rotation;
+        }
+        if (mkMonsterCam != null)
+        {
+            monsterCameraPosition = mkMonsterCam.position;
+            monsterCameraRotation = mkMonsterCam.rotation;
+        }
+        else if (monsterNode != null)
+        {
+            monsterNode.GetDefaultCamera(out monsterCameraPosition, out monsterCameraRotation);
+        }
+        monsterCamBase = monsterCameraPosition;
     }
 
     private void PrepareCharacterPreview()
@@ -313,6 +464,11 @@ public class PoppyMainMenu : MonoBehaviour
             ? playerStand.position + new Vector3(0f, 0.42f, 0f)
             : transform.position + new Vector3(3f, 0f, 3f);
         characterPreview.rotation = Quaternion.Euler(0f, 180f, 0f);
+        if (mkPlayerMenu != null)
+            characterPreview.SetPositionAndRotation(mkPlayerMenu.position, mkPlayerMenu.rotation);
+        mainCharPos = characterPreview.position;
+        mainCharRot = characterPreview.rotation;
+        hasMainCharPose = true;
         PausePreviewAnimator(characterPreview);
         DisablePreviewPhysics(characterPreview);
     }
@@ -328,6 +484,7 @@ public class PoppyMainMenu : MonoBehaviour
             huggyPreview.localPosition = new Vector3(0f, 0.45f, 0.15f);
             huggyPreview.localRotation = Quaternion.Euler(0f, 180f, 0f);
         }
+        PlaceMonsterAtMarker();
         PausePreviewAnimator(huggyPreview);
         DisablePreviewBehaviours(huggyPreview);
         DisablePreviewPhysics(huggyPreview);
@@ -598,6 +755,7 @@ public class PoppyMainMenu : MonoBehaviour
         Cursor.visible = true;
         RefreshShop();
         ApplyPlayerSkin();
+        MoveCharacterTo(mkShopPlayer);
         TransitionCamera(shopCameraPosition, shopCameraRotation);
     }
 
@@ -605,6 +763,7 @@ public class PoppyMainMenu : MonoBehaviour
     {
         if (currentView == MenuView.Monsters || isTransitioning) return;
         currentView = MenuView.Monsters;
+        monsterZoomTarget = 0f;
         mainPanel.SetActive(false);
         shopPanel.SetActive(false);
         monsterPanel.SetActive(true);
@@ -631,6 +790,7 @@ public class PoppyMainMenu : MonoBehaviour
         PoppyUIInputGate.SetShopOpen(false);
         PoppyUIInputGate.SetMenuOpen(true);
         if (huggyPreview != null) huggyPreview.gameObject.SetActive(false);
+        MoveCharacterTo(mkPlayerMenu);
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
         TransitionCamera(mainCameraPosition, mainCameraRotation);
@@ -650,6 +810,7 @@ public class PoppyMainMenu : MonoBehaviour
         if (monsterPanel != null) monsterPanel.SetActive(false);
         if (roomsPanel != null) roomsPanel.SetActive(false);
         if (huggyPreview != null) huggyPreview.gameObject.SetActive(false);
+        MoveCharacterTo(mkPlayerMenu);
         if (PoppyUIInputGate.IsBlocked) PoppyUIInputGate.Clear();
         PoppyUIInputGate.SetMenuOpen(true);
     }
@@ -705,12 +866,24 @@ public class PoppyMainMenu : MonoBehaviour
         huggyPreview.SetParent(monsterBoxes[1], true);
         huggyPreview.localPosition = new Vector3(0f, 0.48f, 0.05f);
         huggyPreview.localRotation = Quaternion.Euler(0f, 180f, 0f);
+        PlaceMonsterAtMarker();
+        ResumePreviewAnimator(huggyPreview);
         ApplyMonsterSkin();
     }
 
     private void RefreshMonsterSelection()
     {
-        if (monsterNameLabel != null) monsterNameLabel.text = PoppyMonsterShop.GetName(selectedMonsterIndex);
+        if (monsterNameLabel != null)
+            monsterNameLabel.text = PoppyMonsterShop.GetName(selectedMonsterIndex) + "   " + (selectedMonsterIndex + 1) + "/" + PoppyMonsterShop.SkinCount;
+        if (monsterNode != null)
+        {
+            monsterNode.SetSkinColor(PoppyMonsterShop.GetColor(selectedMonsterIndex));
+            if (lastNodeSkin != selectedMonsterIndex)
+            {
+                lastNodeSkin = selectedMonsterIndex;
+                monsterNode.Pulse();
+            }
+        }
         bool unlocked = PoppyMonsterShop.IsUnlocked(selectedMonsterIndex);
         int ticketPrice = PoppyMonsterShop.GetTicketPrice(selectedMonsterIndex);
         int creditPrice = PoppyMonsterShop.GetPrice(selectedMonsterIndex);
@@ -773,6 +946,8 @@ public class PoppyMainMenu : MonoBehaviour
     {
         if (huggyPreview != null)
             PoppyMonsterShop.Apply(huggyPreview.gameObject, selectedMonsterIndex);
+        if (huggyMenu != null)
+            PoppyMonsterShop.Apply(huggyMenu.gameObject, PoppyMonsterShop.SelectedSkin);
     }
 
     private void StartSoloAI()

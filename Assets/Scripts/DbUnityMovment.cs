@@ -82,6 +82,161 @@ public class DbUnityMovment : NetworkBehaviour
 
 	private bool _isLocalVictimFrozen;
 
+	// ---- Système de vies : 3 vies, 3 coups de Huggy avant d'être encartonné
+	public const int MaxLives = 3;
+	public const int HitsToBox = 3;
+
+	private readonly NetworkVariable<int> netLives = new NetworkVariable<int>(MaxLives);
+	private readonly NetworkVariable<int> netHits = new NetworkVariable<int>(0);
+	private readonly NetworkVariable<bool> netBoxed = new NetworkVariable<bool>(false);
+	private GameObject boxVisual;
+	private Vector3 boxPullTarget;
+	private float boxPullUntil;
+	private float hitFlashUntil;
+	private float boxedSince;
+	private GameManager lifeGameManager;
+	private Texture2D lifeFlashTexture;
+
+	public int Lives { get { return netLives.Value; } }
+	public int Hits { get { return netHits.Value; } }
+	public bool IsBoxed { get { return netBoxed.Value; } }
+	public float BoxedFor { get { return netBoxed.Value ? Time.time - boxedSince : 0f; } }
+
+	public void ServerResetLife()
+	{
+		if (!IsServer) return;
+		netLives.Value = MaxLives;
+		netHits.Value = 0;
+		netBoxed.Value = false;
+	}
+
+	public int ServerAddHit()
+	{
+		if (!IsServer) return 0;
+		netHits.Value = Mathf.Min(HitsToBox, netHits.Value + 1);
+		return netHits.Value;
+	}
+
+	public int ServerLoseLife()
+	{
+		if (!IsServer) return 0;
+		netLives.Value = Mathf.Max(0, netLives.Value - 1);
+		return netLives.Value;
+	}
+
+	public void ServerSetBoxed(bool boxed)
+	{
+		if (!IsServer) return;
+		netBoxed.Value = boxed;
+		if (!boxed) netHits.Value = 0;
+	}
+
+	public void ServerHitFeedback()
+	{
+		if (!IsServer) return;
+		ClientRpcParams p = new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new ulong[1] { OwnerClientId } } };
+		HitFeedbackClientRpc(netHits.Value, p);
+	}
+
+	public void ServerPullBoxed(Vector3 toward)
+	{
+		if (!IsServer) return;
+		ClientRpcParams p = new ClientRpcParams { Send = new ClientRpcSendParams { TargetClientIds = new ulong[1] { OwnerClientId } } };
+		PullBoxedClientRpc(toward, p);
+	}
+
+	[ClientRpc]
+	private void HitFeedbackClientRpc(int hits, ClientRpcParams rpcParams = default(ClientRpcParams))
+	{
+		hitFlashUntil = Time.time + 0.6f;
+	}
+
+	[ClientRpc]
+	private void PullBoxedClientRpc(Vector3 toward, ClientRpcParams rpcParams = default(ClientRpcParams))
+	{
+		if (!IsOwner || !netBoxed.Value) return;
+		boxPullTarget = toward;
+		boxPullUntil = Time.time + 0.3f;
+	}
+
+	private void OnBoxedChanged(bool previous, bool boxed)
+	{
+		if (boxed)
+		{
+			boxedSince = Time.time;
+			if (boxVisual == null) boxVisual = BoxedPlayerBox.Create(this);
+			if (survivorModelContainer != null) survivorModelContainer.SetActive(false);
+			if (IsOwner)
+			{
+				if (grabpackScript is GrabpackController g) g.ResetHandsBeforeDeath();
+				SetGrabpackStatus(false);
+			}
+		}
+		else
+		{
+			if (boxVisual != null)
+			{
+				Destroy(boxVisual);
+				boxVisual = null;
+			}
+			bool monster = monsterModelContainer != null && monsterModelContainer.activeSelf;
+			bool dead = deadModelContainer != null && deadModelContainer.activeSelf;
+			if (survivorModelContainer != null && !monster && !dead) survivorModelContainer.SetActive(true);
+			if (IsOwner && !monster) SetGrabpackStatus(true);
+		}
+	}
+
+	private void HandleBoxedPull()
+	{
+		if (_controller == null || !_controller.enabled || Time.time > boxPullUntil) return;
+		Vector3 flat = boxPullTarget - transform.position;
+		flat.y = 0f;
+		if (flat.magnitude < 1.6f) return;
+		_controller.Move(flat.normalized * 4.5f * Time.deltaTime + Vector3.down * 2f * Time.deltaTime);
+	}
+
+	private void DrawStaminaHUD()
+	{
+		if (!IsOwner) return;
+		if (lifeGameManager == null) lifeGameManager = FindObjectOfType<GameManager>();
+		bool inRound = lifeGameManager != null && lifeGameManager.IsGameStarted &&
+			(netBoxed.Value || (survivorModelContainer != null && survivorModelContainer.activeSelf));
+		if (!inRound) return;
+
+		if (Time.time < hitFlashUntil)
+		{
+			if (lifeFlashTexture == null)
+			{
+				lifeFlashTexture = new Texture2D(1, 1);
+				lifeFlashTexture.SetPixel(0, 0, Color.white);
+				lifeFlashTexture.Apply();
+			}
+			GUI.color = new Color(0.8f, 0f, 0f, Mathf.Clamp01((hitFlashUntil - Time.time) / 0.6f) * 0.45f);
+			GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), lifeFlashTexture);
+			GUI.color = Color.white;
+		}
+
+		GUIStyle style = new GUIStyle(GUI.skin.label);
+		style.fontSize = 30;
+		style.fontStyle = FontStyle.Bold;
+		for (int i = 0; i < MaxLives; i++)
+		{
+			style.normal.textColor = i < netLives.Value ? new Color(0.95f, 0.15f, 0.2f) : new Color(0.25f, 0.25f, 0.28f);
+			GUI.Label(new Rect(20f + i * 36f, 18f, 40f, 40f), "♥", style);
+		}
+		style.fontSize = 16;
+		style.normal.textColor = Color.white;
+		GUI.Label(new Rect(20f, 56f, 300f, 24f), "Coups : " + netHits.Value + " / " + HitsToBox, style);
+
+		if (netBoxed.Value)
+		{
+			style.fontSize = 26;
+			style.alignment = TextAnchor.MiddleCenter;
+			style.normal.textColor = new Color(1f, 0.82f, 0.3f);
+			GUI.Label(new Rect(0f, Screen.height * 0.18f, Screen.width, 40f), "ENCARTONNÉ ! Un allié peut te libérer ou te tirer avec le Grabpack.", style);
+		}
+	}
+
 	public NetworkVariable<Vector3> NetPosition = new NetworkVariable<Vector3>(default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
 	public NetworkVariable<Quaternion> NetRotation = new NetworkVariable<Quaternion>(default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
@@ -106,6 +261,8 @@ public class DbUnityMovment : NetworkBehaviour
 
 	public override void OnNetworkSpawn()
 	{
+		netBoxed.OnValueChanged += OnBoxedChanged;
+		if (netBoxed.Value) OnBoxedChanged(false, true);
 		_skinColorIndex.OnValueChanged += OnSkinColorChanged;
 		ApplySkinColor(_skinColorIndex.Value);
 		if (IsOwner)
@@ -186,6 +343,8 @@ public class DbUnityMovment : NetworkBehaviour
 
 	public override void OnNetworkDespawn()
 	{
+		netBoxed.OnValueChanged -= OnBoxedChanged;
+		if (boxVisual != null) Destroy(boxVisual);
 		_skinColorIndex.OnValueChanged -= OnSkinColorChanged;
 	}
 
@@ -216,6 +375,9 @@ public class DbUnityMovment : NetworkBehaviour
 
 	private void Update()
 	{
+		if (IsOwner && netBoxed.Value)
+			HandleBoxedPull();
+
 		if (!IsOwner)
 		{
 			if (!_netIsLockedInAttack.Value)
@@ -225,7 +387,7 @@ public class DbUnityMovment : NetworkBehaviour
 				UpdateAnimatorProperties(NetMoveSpeed.Value, IsCrouching.Value, IsSprinting.Value, IsWalking.Value);
 			}
 		}
-		else if (_netIsLockedInAttack.Value || _isLockedInAttack || _isLocalVictimFrozen)
+		else if (_netIsLockedInAttack.Value || _isLockedInAttack || _isLocalVictimFrozen || netBoxed.Value)
 		{
 			if (_controller != null && _controller.enabled)
 			{
@@ -383,6 +545,7 @@ public class DbUnityMovment : NetworkBehaviour
 		GUI.Label(new Rect(background.x, background.y - 19f, width, 18f),
 			_wasExhausted ? "ENDURANCE ÉPUISÉE" : "ENDURANCE");
 		GUI.color = previousColor;
+		DrawStaminaHUD();
 	}
 
 	private void HandleMonsterAttack()
@@ -497,7 +660,22 @@ public class DbUnityMovment : NetworkBehaviour
 				return;
 		}
 
-		StartCoroutine(ServerKillSequence(victimClientId, victimNetObjectId));
+		StartCoroutine(ServerAttackSequence(victimClientId));
+	}
+
+	// Un coup de monstre : retire un coup au survivant (3 coups = encartonné). Plus de one-shot.
+	private IEnumerator ServerAttackSequence(ulong victimId)
+	{
+		_isLockedInAttack = true;
+		_netIsLockedInAttack.Value = true;
+		GameManager gameManager = UnityEngine.Object.FindFirstObjectByType<GameManager>();
+		if (gameManager != null)
+		{
+			gameManager.ServerDamageSurvivor(victimId);
+		}
+		yield return new WaitForSeconds(1.0f);
+		_isLockedInAttack = false;
+		_netIsLockedInAttack.Value = false;
 	}
 
 	private IEnumerator ServerKillSequence(ulong victimId, ulong victimNetObjectId)

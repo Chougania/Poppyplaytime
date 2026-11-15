@@ -26,8 +26,12 @@ public class HazardKillZone : NetworkBehaviour
 	[ServerRpc(RequireOwnership = false)]
 	private void ExecuteHazardKillServerRpc(ulong victimClientId, ulong victimNetworkObjectId)
 	{
-			SyncHazardKillClientRpc(victimClientId, victimNetworkObjectId);
-			StartCoroutine(ServerRespawnTimer(victimClientId));
+			// Un contact = un coup (3 coups = encartonné), plus de mort instantanée.
+			GameManager gameManager = Object.FindFirstObjectByType<GameManager>();
+			if (gameManager != null)
+			{
+				gameManager.ServerDamageSurvivor(victimClientId);
+			}
 	}
 
 	[ClientRpc]

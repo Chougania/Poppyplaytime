@@ -38,6 +38,14 @@ public class GrabpackController : NetworkBehaviour
 
 	private Rigidbody reeledObjectRed;
 
+	private BoxedPlayerBox reeledBoxBlue;
+
+	private BoxedPlayerBox reeledBoxRed;
+
+	private float nextBoxPullSend;
+
+	private GameManager boxGameManager;
+
 	private NetworkVariable<NetworkObjectReference> heldBatteryBlue = new NetworkVariable<NetworkObjectReference>();
 
 	private NetworkVariable<NetworkObjectReference> heldBatteryRed = new NetworkVariable<NetworkObjectReference>();
@@ -94,6 +102,39 @@ public class GrabpackController : NetworkBehaviour
 			}
 		}
 		HandleDoorDragging();
+		HandleBoxPulling();
+	}
+
+	// Un survivant encartonné se tire avec le Grabpack : accroche le carton et maintiens le clic.
+	private void HandleBoxPulling()
+	{
+		if (!Input.GetMouseButton(0))
+		{
+			reeledBoxBlue = null;
+		}
+		if (!Input.GetMouseButton(1))
+		{
+			reeledBoxRed = null;
+		}
+		BoxedPlayerBox box = reeledBoxBlue != null ? reeledBoxBlue : reeledBoxRed;
+		GrabpackHand hand = reeledBoxBlue != null ? blueHand : redHand;
+		if (box == null || box.Owner == null || hand == null || hand.CurrentState != GrabpackHand.HandState.Attached || !box.Owner.IsBoxed)
+		{
+			return;
+		}
+		if (Time.time < nextBoxPullSend)
+		{
+			return;
+		}
+		nextBoxPullSend = Time.time + 0.1f;
+		if (boxGameManager == null)
+		{
+			boxGameManager = UnityEngine.Object.FindObjectOfType<GameManager>();
+		}
+		if (boxGameManager != null)
+		{
+			boxGameManager.PullBoxedServerRpc(box.Owner.OwnerClientId, transform.position);
+		}
 	}
 
 	private void FixedUpdate()
@@ -149,6 +190,18 @@ public class GrabpackController : NetworkBehaviour
 				if (networkObject != null && !networkObject.IsOwner)
 				{
 					RequestNetworkOwnershipServerRpc(networkObject);
+				}
+			}
+			else if (hitInfo.collider.GetComponentInParent<BoxedPlayerBox>() != null)
+			{
+				BoxedPlayerBox boxedPlayer = hitInfo.collider.GetComponentInParent<BoxedPlayerBox>();
+				if (mouseButton == 0)
+				{
+					reeledBoxBlue = boxedPlayer;
+				}
+				else
+				{
+					reeledBoxRed = boxedPlayer;
 				}
 			}
 			else if (hitInfo.collider.CompareTag("Grab") || hitInfo.collider.CompareTag("Door"))
@@ -316,11 +369,11 @@ public class GrabpackController : NetworkBehaviour
 	{
 		if (hand != null && hand.handObject != null && hand.CurrentState == GrabpackHand.HandState.Attached)
 		{
-			if (hand == blueHand && reeledObjectBlue != null)
+			if (hand == blueHand && (reeledObjectBlue != null || reeledBoxBlue != null || activeBlueDoor != null))
 			{
 				return Vector3.zero;
 			}
-			if (hand == redHand && reeledObjectRed != null)
+			if (hand == redHand && (reeledObjectRed != null || reeledBoxRed != null || activeRedDoor != null))
 			{
 				return Vector3.zero;
 			}

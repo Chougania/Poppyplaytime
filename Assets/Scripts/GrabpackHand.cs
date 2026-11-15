@@ -43,6 +43,14 @@ public class GrabpackHand : NetworkBehaviour
 
     public HandState CurrentState => currentState;
 
+    // Synchronisation : les autres joueurs voient la main partir, la corde se tendre et la main revenir.
+    private readonly NetworkVariable<byte> netState = new NetworkVariable<byte>(
+        0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private readonly NetworkVariable<Vector3> netPos = new NetworkVariable<Vector3>(
+        Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    private bool remoteActive;
+    private Vector3 remotePos;
+
     private void Awake()
     {
         ropeRenderer = GetComponent<LineRenderer>();
@@ -112,11 +120,70 @@ public class GrabpackHand : NetworkBehaviour
 
     private void Update()
     {
-        if (!IsSpawned || !IsOwner)
+        if (!IsSpawned)
             return;
+
+        if (!IsOwner)
+        {
+            UpdateRemoteVisuals();
+            return;
+        }
 
         UpdateHandMovement();
         UpdateRopeVisuals();
+
+        if (netState.Value != (byte)currentState)
+            netState.Value = (byte)currentState;
+        if (currentState != HandState.Idle)
+            netPos.Value = currentHandPosition;
+    }
+
+    private void UpdateRemoteVisuals()
+    {
+        if (handObject == null || handSpawnPoint == null)
+            return;
+
+        if ((HandState)netState.Value == HandState.Idle)
+        {
+            if (remoteActive)
+            {
+                remoteActive = false;
+                ResetHandToIdle();
+            }
+            return;
+        }
+
+        if (!remoteActive)
+        {
+            remoteActive = true;
+            remotePos = handSpawnPoint.position;
+            handObject.transform.SetParent(null, true);
+            handObject.transform.localScale = originalWorldScale;
+            if (ropeRenderer != null)
+                ropeRenderer.enabled = true;
+        }
+
+        remotePos = Vector3.Lerp(remotePos, netPos.Value, Time.deltaTime * 20f);
+        Vector3 dir = remotePos - handSpawnPoint.position;
+        Quaternion rot = dir.sqrMagnitude > 0.01f ? Quaternion.LookRotation(dir) : handObject.transform.rotation;
+        handObject.transform.SetPositionAndRotation(remotePos, rot);
+
+        if (ropeRenderer != null)
+        {
+            ropeRenderer.positionCount = 2;
+            ropeRenderer.SetPosition(0, handSpawnPoint.position);
+            ropeRenderer.SetPosition(1, remotePos);
+        }
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (remoteActive)
+        {
+            remoteActive = false;
+            if (handObject != null && handSpawnPoint != null)
+                ResetHandToIdle();
+        }
     }
 
     public void Fire(Vector3 targetPoint, GrabpackDraggableDoor door)

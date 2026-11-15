@@ -80,16 +80,52 @@ public static class PoppyMonsterShop
         Renderer[] renderers = modelRoot.GetComponentsInChildren<Renderer>(true);
         MaterialPropertyBlock block = new MaterialPropertyBlock();
 
+        // Vrai modèle de Huggy : on ne teinte que la fourrure (pas les yeux, la bouche ni les dents).
+        bool hasFur = false;
+        for (int i = 0; i < renderers.Length && !hasFur; i++)
+        {
+            Material[] mats = renderers[i] != null ? renderers[i].sharedMaterials : null;
+            for (int m = 0; mats != null && m < mats.Length; m++)
+            {
+                if (mats[m] != null && mats[m].name.IndexOf("fur", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    hasFur = true;
+                    break;
+                }
+            }
+        }
+
         for (int i = 0; i < renderers.Length; i++)
         {
             Renderer renderer = renderers[i];
             if (renderer == null)
                 continue;
 
-            renderer.GetPropertyBlock(block);
-            block.SetColor("_Color", color);
-            block.SetColor("_BaseColor", color);
-            renderer.SetPropertyBlock(block);
+            if (!hasFur)
+            {
+                renderer.GetPropertyBlock(block);
+                block.SetColor("_Color", color);
+                block.SetColor("_BaseColor", color);
+                renderer.SetPropertyBlock(block);
+                continue;
+            }
+
+            Material[] shared = renderer.sharedMaterials;
+            for (int m = 0; m < shared.Length; m++)
+            {
+                bool fur = shared[m] != null && shared[m].name.IndexOf("fur", System.StringComparison.OrdinalIgnoreCase) >= 0;
+                if (fur)
+                {
+                    renderer.GetPropertyBlock(block, m);
+                    block.SetColor("_Color", color);
+                    block.SetColor("_BaseColor", color);
+                    renderer.SetPropertyBlock(block, m);
+                }
+                else
+                {
+                    renderer.SetPropertyBlock(null, m);
+                }
+            }
         }
     }
 }
