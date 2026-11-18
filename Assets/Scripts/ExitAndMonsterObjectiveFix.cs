@@ -1,10 +1,12 @@
+using System.Collections;
 using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
 /// <summary>
-/// Retries exit requests until the server accepts the survivor escape, and hides
-/// local-only objective props from the player-controlled monster.
+/// Retries exit requests until the server accepts the survivor escape, synchronizes
+/// the owner's lobby teleport, and hides only generator labels from the player monster.
+/// Generator props and the exit remain visible to everyone.
 /// </summary>
 [DefaultExecutionOrder(-900)]
 public sealed class ExitAndMonsterObjectiveFix : MonoBehaviour
@@ -13,7 +15,8 @@ public sealed class ExitAndMonsterObjectiveFix : MonoBehaviour
     private GameManager gameManager;
     private float nextExitRequestAt;
     private float nextVisibilityRefreshAt;
-    private readonly List<GameObject> objectiveObjects = new List<GameObject>();
+    private bool exitTeleportPending;
+    private readonly List<GameObject> generatorLabels = new List<GameObject>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void Install()
@@ -33,13 +36,13 @@ public sealed class ExitAndMonsterObjectiveFix : MonoBehaviour
         if (gameManager == null || NetworkManager.Singleton == null || !NetworkManager.Singleton.IsListening)
             return;
 
-        RefreshObjectiveVisibility();
+        RefreshGeneratorLabelVisibility();
         TryRequestExit();
     }
 
     private void TryRequestExit()
     {
-        if (!gameManager.IsGameStarted || Time.unscaledTime < nextExitRequestAt)
+        if (!gameManager.IsGameStarted || exitTeleportPending || Time.unscaledTime < nextExitRequestAt)
             return;
 
         NetworkManager network = NetworkManager.Singleton;
@@ -47,19 +50,53 @@ public sealed class ExitAndMonsterObjectiveFix : MonoBehaviour
             return;
 
         DbUnityMovment localPlayer = network.LocalClient.PlayerObject.GetComponent<DbUnityMovment>();
-        if (!IsLocalSurvivor(localPlayer) || localPlayer.IsBoxed)
+        if (!IsLocalSurvivor(localPlayer) || localPlayer.IsBoxed || !gameManager.ExitOpen)
             return;
 
-        // The original one-shot request could be rejected while the owner position
-        // was still being replicated to the server. Retry at the server's accepted range.
         if ((localPlayer.transform.position - gameManager.ExitPos).sqrMagnitude > 4.4f * 4.4f)
             return;
 
         nextExitRequestAt = Time.unscaledTime + 0.75f;
+        // Request acceptance while the player is still at the exit; then ensure the
+        // owner-authoritative transform and the custom interpolation variables agree.
         gameManager.EscapeServerRpc();
+        if (gameManager.lobbySpawnPoint != null)
+            StartCoroutine(ApplyLobbyTeleport(localPlayer));
     }
 
-    private void RefreshObjectiveVisibility()
+    private IEnumerator ApplyLobbyTeleport(DbUnityMovment player)
+    {
+        exitTeleportPending = true;
+        yield return new WaitForSecondsRealtime(0.2f);
+
+        if (player != null && player.IsSpawned && gameManager != null && gameManager.lobbySpawnPoint != null)
+        {
+            CharacterController controller = player.GetComponent<CharacterController>();
+            bool controllerWasEnabled = controller != null && controller.enabled;
+            if (controllerWasEnabled) controller.enabled = false;
+
+            Transform lobby = gameManager.lobbySpawnPoint;
+            player.transform.SetPositionAndRotation(lobby.position, lobby.rotation);
+            player.NetPosition.Value = lobby.position;
+            player.NetRotation.Value = lobby.rotation;
+
+            Rigidbody body = player.GetComponent<Rigidbody>();
+            if (body != null)
+            {
+                body.position = lobby.position;
+                body.rotation = lobby.rotation;
+                body.velocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
+            Physics.SyncTransforms();
+            if (controllerWasEnabled) controller.enabled = true;
+        }
+
+        yield return new WaitForSecondsRealtime(0.35f);
+        exitTeleportPending = false;
+    }
+
+    private void RefreshGeneratorLabelVisibility()
     {
         if (Time.unscaledTime < nextVisibilityRefreshAt)
             return;
@@ -70,22 +107,23 @@ public sealed class ExitAndMonsterObjectiveFix : MonoBehaviour
             network.LocalClient.PlayerObject != null
             ? network.LocalClient.PlayerObject.GetComponent<DbUnityMovment>()
             : null;
-        bool hideObjectives = gameManager.IsGameStarted && IsLocalMonster(localPlayer);
+        bool hideLabels = gameManager.IsGameStarted && IsLocalMonster(localPlayer);
 
-        objectiveObjects.Clear();
+        generatorLabels.Clear();
         GameObject[] allObjects = FindObjectsOfType<GameObject>(true);
         foreach (GameObject obj in allObjects)
         {
-            if (obj == null)
+            if (obj == null || obj.name != "Label")
                 continue;
-            if (obj.name == "ExitGate" || obj.name.StartsWith("Generator"))
-                objectiveObjects.Add(obj);
+            Transform parent = obj.transform.parent;
+            if (parent != null && parent.name.StartsWith("Generator"))
+                generatorLabels.Add(obj);
         }
 
-        foreach (GameObject obj in objectiveObjects)
+        foreach (GameObject label in generatorLabels)
         {
-            if (obj != null && obj.activeSelf == hideObjectives)
-                obj.SetActive(!hideObjectives);
+            if (label != null && label.activeSelf == hideLabels)
+                label.SetActive(!hideLabels);
         }
     }
 
