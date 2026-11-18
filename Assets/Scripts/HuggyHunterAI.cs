@@ -45,6 +45,14 @@ public class HuggyHunterAI : NetworkBehaviour
         new NetworkVariable<int>(0,
             NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
+    // Joueur actuellement poursuivi (musique de poursuite, battements de coeur).
+    private readonly NetworkVariable<ulong> networkTargetId =
+        new NetworkVariable<ulong>(ulong.MaxValue,
+            NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
+    public bool IsChasing { get { return State == HunterState.Chase || State == HunterState.Attack; } }
+    public ulong ChaseTargetClientId { get { return networkTargetId.Value; } }
+
     private float baseVisionRange;
     private float baseChaseSpeed;
     private float baseAttackCooldown;
@@ -186,6 +194,7 @@ public class HuggyHunterAI : NetworkBehaviour
         if (nearest != null)
         {
             target = nearest;
+            networkTargetId.Value = nearest.OwnerClientId;
             lastKnownPosition = target.transform.position;
             lostSightTimer = 0f;
 
@@ -195,9 +204,9 @@ public class HuggyHunterAI : NetworkBehaviour
                 agent.speed = chaseSpeed;
                 agent.isStopped = false;
 
-                if (!hasAlerted && audioSource != null && alertSound != null)
+                if (!hasAlerted)
                 {
-                    audioSource.PlayOneShot(alertSound);
+                    MonsterSpottedClientRpc(target.OwnerClientId);
                     hasAlerted = true;
                 }
             }
@@ -211,12 +220,19 @@ public class HuggyHunterAI : NetworkBehaviour
             if (lostSightTimer >= loseTargetAfter)
             {
                 target = null;
+                networkTargetId.Value = ulong.MaxValue;
                 State = HunterState.Search;
                 agent.speed = searchSpeed;
                 agent.isStopped = false;
                 agent.SetDestination(lastKnownPosition);
             }
         }
+    }
+
+    [ClientRpc]
+    private void MonsterSpottedClientRpc(ulong spottedClientId)
+    {
+        PoppyAudioManager.PlayMonsterSpotted(spottedClientId);
     }
 
     private bool CanSee(DbUnityMovment candidate)
@@ -364,6 +380,7 @@ public class HuggyHunterAI : NetworkBehaviour
         }
 
         target = null;
+        networkTargetId.Value = ulong.MaxValue;
         lostSightTimer = 0f;
         attackInProgress = false;
         agent.isStopped = false;

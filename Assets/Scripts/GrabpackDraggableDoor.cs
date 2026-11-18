@@ -55,7 +55,7 @@ public class GrabpackDraggableDoor : NetworkBehaviour
 		startingPosition = transform.position;
 		doorRigidbody.useGravity = false;
 		doorRigidbody.isKinematic = true;
-		doorRigidbody.constraints = RigidbodyConstraints.FreezeAll;
+		doorRigidbody.constraints = RigidbodyConstraints.FreezeRotation;
 		BuildObstacle();
 	}
 
@@ -90,8 +90,14 @@ public class GrabpackDraggableDoor : NetworkBehaviour
 
 	public override void OnNetworkSpawn()
 	{
-		shown = netOpen.Value;
+		shown = Mathf.Clamp01(netOpen.Value);
 		lastShown = shown;
+		if (doorRigidbody != null)
+		{
+			doorRigidbody.isKinematic = true;
+			doorRigidbody.constraints = RigidbodyConstraints.FreezeRotation;
+			doorRigidbody.position = startingPosition + Vector3.down * (maxPullDistance * shown);
+		}
 		if (IsServer && NetworkManager.Singleton != null)
 			NetworkManager.Singleton.OnClientDisconnectCallback += OnClientGone;
 	}

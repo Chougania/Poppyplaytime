@@ -33,6 +33,11 @@ public class GrabpackHand : NetworkBehaviour
     private HandState currentState;
     private Vector3 targetHandPosition;
     private Vector3 currentHandPosition;
+    [Header("Orientation de la main au tir")]
+    [Tooltip("Rotation autour de l'axe de tir (degrés). 90 / -90 = main verticale. Inverse les signes si les pouces sont à l'envers.")]
+    public float shootRollLeft = 90f;
+    public float shootRollRight = -90f;
+
     private Quaternion shootRotation;
     private GrabpackDraggableDoor attachedDoor;
     private Transform originalParent;
@@ -165,7 +170,9 @@ public class GrabpackHand : NetworkBehaviour
 
         remotePos = Vector3.Lerp(remotePos, netPos.Value, Time.deltaTime * 20f);
         Vector3 dir = remotePos - handSpawnPoint.position;
-        Quaternion rot = dir.sqrMagnitude > 0.01f ? Quaternion.LookRotation(dir) : handObject.transform.rotation;
+        Quaternion rot = dir.sqrMagnitude > 0.01f
+            ? Quaternion.LookRotation(dir, Vector3.up) * Quaternion.Euler(0f, 0f, IsLeftHand() ? shootRollLeft : shootRollRight)
+            : handObject.transform.rotation;
         handObject.transform.SetPositionAndRotation(remotePos, rot);
 
         if (ropeRenderer != null)
@@ -199,9 +206,7 @@ public class GrabpackHand : NetworkBehaviour
         currentHandPosition = handSpawnPoint.position;
         targetHandPosition = targetPoint;
         attachedDoor = door;
-        shootRotation = playerCamera != null
-            ? playerCamera.transform.rotation
-            : handSpawnPoint.rotation;
+        shootRotation = ComputeShootRotation();
 
         handObject.transform.SetParent(null, true);
         handObject.transform.localScale = originalWorldScale;
@@ -210,6 +215,21 @@ public class GrabpackHand : NetworkBehaviour
 
         if (ropeRenderer != null)
             ropeRenderer.enabled = true;
+    }
+
+    // La main gauche est du côté -X du joueur, la droite du côté +X : le roulis est opposé pour garder les mains verticales.
+    private bool IsLeftHand()
+    {
+        Transform root = transform.root;
+        NetworkObject owner = GetComponentInParent<NetworkObject>();
+        if (owner != null) root = owner.transform;
+        return root.InverseTransformPoint(handSpawnPoint.position).x < 0f;
+    }
+
+    private Quaternion ComputeShootRotation()
+    {
+        Quaternion baseRotation = playerCamera != null ? playerCamera.transform.rotation : handSpawnPoint.rotation;
+        return baseRotation * Quaternion.Euler(0f, 0f, IsLeftHand() ? shootRollLeft : shootRollRight);
     }
 
     public void Retract()

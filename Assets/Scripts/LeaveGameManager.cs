@@ -41,7 +41,16 @@ public class LeaveGameManager : MonoBehaviour
 
 	private void TransitionSingleSceneObjects()
 	{
-		if (mainMenuCanvas != null)
+		// Le nouveau menu (PoppyMainMenu) gère son propre affichage : on ne rallume pas l'ancien Canvas 1.
+		bool poppyMenu = Object.FindObjectOfType<PoppyMainMenu>() != null;
+		if (poppyMenu)
+		{
+			if (mainMenuCanvas != null)
+			{
+				mainMenuCanvas.SetActive(value: false);
+			}
+		}
+		else if (mainMenuCanvas != null)
 		{
 			mainMenuCanvas.SetActive(value: true);
 		}

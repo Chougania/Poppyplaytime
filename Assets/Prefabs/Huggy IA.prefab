@@ -2090,7 +2090,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  GlobalObjectIdHash: 4164088378
+  GlobalObjectIdHash: 3622445242
   InScenePlacedSourceGlobalObjectIdHash: 0
   AlwaysReplicateAsRoot: 0
   SynchronizeTransform: 1
@@ -2109,7 +2109,7 @@ NavMeshAgent:
   m_Enabled: 1
   m_AgentTypeID: 0
   m_Radius: 0.55
-  m_Speed: 3.5
+  m_Speed: 5
   m_Acceleration: 14
   avoidancePriority: 50
   m_AngularSpeed: 360
@@ -2283,20 +2283,20 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b2d5a0f8c3e7412baf906d4e8c7b3152, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  visionRange: 18
+  visionRange: 25
   visionAngle: 110
   obstructionMask:
     serializedVersion: 2
     m_Bits: 4294967295
   targetRefreshRate: 0.2
   loseTargetAfter: 3
-  patrolSpeed: 2.2
-  chaseSpeed: 5.2
-  searchSpeed: 3
-  patrolRadius: 12
+  patrolSpeed: 4.2
+  chaseSpeed: 7.2
+  searchSpeed: 5
+  patrolRadius: 20
   patrolPause: 1.5
-  attackDistance: 1.8
-  attackCooldown: 4
+  attackDistance: 3
+  attackCooldown: 2
   attackWindup: 1.35
   audioSource: {fileID: 7188083434130263166}
   alertSound: {fileID: 0}

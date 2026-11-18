@@ -32,14 +32,42 @@ public class MonsterShopNode : MonoBehaviour
 	private float pulse;
 	private bool built;
 
+	// Compatible avec une hiérarchie faite à la main : si les champs sont vides, on cherche les enfants par leur nom
+	// (ex. "ShopCameraAnchor", "CameraAnchor" pour la caméra ; "MonsterAnchor" pour le monstre).
+	private Transform FindChildByName(string contains)
+	{
+		foreach (Transform t in GetComponentsInChildren<Transform>(true))
+		{
+			if (t != transform && t.name.IndexOf(contains, System.StringComparison.OrdinalIgnoreCase) >= 0)
+			{
+				return t;
+			}
+		}
+		return null;
+	}
+
 	public Transform MonsterAnchor
 	{
-		get { return monsterAnchor != null ? monsterAnchor : transform; }
+		get
+		{
+			if (monsterAnchor == null)
+			{
+				monsterAnchor = FindChildByName("MonsterAnchor");
+			}
+			return monsterAnchor != null ? monsterAnchor : transform;
+		}
 	}
 
 	public Transform CameraAnchor
 	{
-		get { return cameraAnchor; }
+		get
+		{
+			if (cameraAnchor == null)
+			{
+				cameraAnchor = FindChildByName("Camera");
+			}
+			return cameraAnchor;
+		}
 	}
 
 	public void GetDefaultCamera(out Vector3 position, out Quaternion rotation)

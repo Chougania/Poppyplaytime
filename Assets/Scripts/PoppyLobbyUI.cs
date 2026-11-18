@@ -26,6 +26,7 @@ public class PoppyLobbyUI : MonoBehaviour
     private bool wasInSession;
     private bool wasInMatch;
     private bool isVisible;
+    private bool userHidden;
     private float rosterRefreshTimer;
 
     private void Start()
@@ -73,13 +74,13 @@ public class PoppyLobbyUI : MonoBehaviour
                 if (readyLabel != null) readyLabel.text = "JE SUIS PRÊT";
             }
         }
-        bool shouldShow = !inMatch;
+        // TAB masque / réaffiche le salon : masqué, le curseur est verrouillé et la caméra + le Grabpack fonctionnent.
+        if (inMatch) userHidden = false;
+        else if (Input.GetKeyDown(KeyCode.Tab)) userHidden = !userHidden;
+
+        bool shouldShow = !inMatch && !userHidden;
         if (shouldShow != isVisible)
             SetVisible(shouldShow, true);
-
-
-        if (!isVisible)
-            return;
 
         if (!inMatch)
         {
@@ -87,13 +88,16 @@ public class PoppyLobbyUI : MonoBehaviour
             if (net.IsHost && Input.GetKeyDown(KeyCode.O)) StartMatch();
         }
 
+        if (!isVisible)
+            return;
+
         rosterRefreshTimer -= Time.unscaledDeltaTime;
         if (rosterRefreshTimer <= 0f)
         {
             rosterRefreshTimer = 0.5f;
             RefreshRoster();
         }
-        statusText.text = inMatch ? "PARTIE EN COURS  •  BONNE CHANCE" : "EN ATTENTE DES JOUEURS";
+        statusText.text = inMatch ? "PARTIE EN COURS  •  BONNE CHANCE" : "EN ATTENTE DES JOUEURS  •  TAB : MASQUER LE SALON";
         modeText.text = PlayerPrefs.GetInt("Poppy.EnemyMode", 0) == 1
             ? "MODE : HUGGY IA  •  " + DifficultyName()
             : "MODE : MONSTRE JOUEUR";
@@ -173,27 +177,61 @@ public class PoppyLobbyUI : MonoBehaviour
         if (rosterRoot == null || NetworkManager.Singleton == null) return;
         foreach (Transform child in rosterRoot) Destroy(child.gameObject);
 
-        foreach (NetworkClient client in NetworkManager.Singleton.ConnectedClientsList)
+        // ConnectedClientsList n'existe que sur le serveur : un client lisait cette liste et déclenchait une erreur.
+        if (NetworkManager.Singleton.IsServer)
         {
-            bool isReady = gameManager != null && gameManager.IsClientReady(client.ClientId);
-            bool isHost = client.ClientId == NetworkManager.ServerClientId;
-            string playerName = "JOUEUR " + client.ClientId;
-            if (client.PlayerObject != null)
-            {
-                PlayerNameTag tag = client.PlayerObject.GetComponent<PlayerNameTag>();
-                if (tag != null && tag.nameTextMesh != null && !string.IsNullOrWhiteSpace(tag.nameTextMesh.text))
-                    playerName = tag.nameTextMesh.text;
-            }
-            Label("Player " + client.ClientId, rosterRoot, Vector2.zero, Vector2.one, 18,
-                isReady ? new Color(0.45f, 0.9f, 0.58f) : new Color(0.88f, 0.88f, 0.88f)).text =
-                (isHost ? "★  " : "    ") + playerName + "     " + (isReady ? "✓ PRÊT" : "… EN ATTENTE");
+            foreach (NetworkClient client in NetworkManager.Singleton.ConnectedClientsList)
+                AddRosterRow(client.ClientId, client.PlayerObject != null ? client.PlayerObject.gameObject : null);
         }
+        else
+        {
+            foreach (DbUnityMovment player in FindObjectsOfType<DbUnityMovment>())
+            {
+                if (player != null && player.NetworkObject != null && player.NetworkObject.IsSpawned)
+                    AddRosterRow(player.OwnerClientId, player.gameObject);
+            }
+        }
+    }
+
+    private void AddRosterRow(ulong clientId, GameObject playerObject)
+    {
+        bool isReady = gameManager != null && gameManager.IsClientReady(clientId);
+        bool isHost = clientId == NetworkManager.ServerClientId;
+        string playerName = "JOUEUR " + clientId;
+        if (playerObject != null)
+        {
+            PlayerNameTag tag = playerObject.GetComponent<PlayerNameTag>();
+            if (tag != null && tag.nameTextMesh != null && !string.IsNullOrWhiteSpace(tag.nameTextMesh.text))
+                playerName = tag.nameTextMesh.text;
+        }
+        Label("Player " + clientId, rosterRoot, Vector2.zero, Vector2.one, 18,
+            isReady ? new Color(0.45f, 0.9f, 0.58f) : new Color(0.88f, 0.88f, 0.88f)).text =
+            (isHost ? "★  " : "    ") + playerName + "     " + (isReady ? "✓ PRÊT" : "… EN ATTENTE");
+    }
+
+    private void OnGUI()
+    {
+        if (!wasInSession || wasInMatch || !userHidden)
+            return;
+        GUIStyle style = new GUIStyle(GUI.skin.label);
+        style.fontSize = 18;
+        style.fontStyle = FontStyle.Bold;
+        style.alignment = TextAnchor.MiddleCenter;
+        style.normal.textColor = Color.white;
+        GUI.Label(new Rect(0f, Screen.height - 50f, Screen.width, 30f),
+            "[TAB] Réafficher le salon   •   [P] Prêt   •   [O] Lancer (hôte)", style);
     }
 
     private void ToggleReady()
     {
         localReady = !localReady;
-        if (gameManager != null) gameManager.SetLocalReady(localReady);
+        NetworkClient localClient = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClient : null;
+        DbUnityMovment me = localClient != null && localClient.PlayerObject != null
+            ? localClient.PlayerObject.GetComponent<DbUnityMovment>() : null;
+        if (me == null || !me.RequestReady(localReady))
+        {
+            if (gameManager != null) gameManager.SetLocalReady(localReady);
+        }
         if (readyButton != null)
         {
             TMP_Text label = readyButton.GetComponentInChildren<TMP_Text>();

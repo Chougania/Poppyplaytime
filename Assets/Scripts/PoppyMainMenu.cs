@@ -169,9 +169,23 @@ public class PoppyMainMenu : MonoBehaviour
 
     private void PlaceMonsterAtMarker()
     {
-        if (huggyPreview == null || mkShopMonster == null) return;
-        huggyPreview.SetParent(null, true);
-        huggyPreview.SetPositionAndRotation(mkShopMonster.position, mkShopMonster.rotation);
+        if (huggyPreview == null) return;
+
+        // Le modèle d'aperçu peut contenir un NetworkObject. Ne jamais le
+        // re-parenter dans le menu : Netcode exige un NetworkManager à l'écoute
+        // pour traiter OnTransformParentChanged.
+        if (mkShopMonster != null)
+        {
+            huggyPreview.SetPositionAndRotation(mkShopMonster.position, mkShopMonster.rotation);
+        }
+        else if (monsterBoxes != null && monsterBoxes.Length > 1 && monsterBoxes[1] != null)
+        {
+            Transform box = monsterBoxes[1];
+            huggyPreview.SetPositionAndRotation(
+                box.TransformPoint(new Vector3(0f, 0.48f, 0.05f)),
+                box.rotation * Quaternion.Euler(0f, 180f, 0f));
+        }
+
         if (monsterNode != null && monsterNode.playIdleAnimation)
             ResumePreviewAnimator(huggyPreview);
     }
@@ -194,23 +208,13 @@ public class PoppyMainMenu : MonoBehaviour
 
     private void Start()
     {
+        PoppyAudioManager.PlayMenuMusic();
         if (menuCamera == null) menuCamera = Camera.main;
         FindMarkers();
-
-        // La caméra du menu ne doit jamais rester enfant du rig/caméra du lobby :
-        // le mouvement ou la rotation du joueur/du rig faisait tourner le menu avec lui.
-        // Les points sont des repères monde indépendants ; on détache donc la caméra
-        // avant de mémoriser leurs positions et rotations.
-        if (menuCamera != null && menuCamera.transform.parent != null)
+        // Les poses viennent des points (repères monde) : on détache la caméra de son rig pour qu'elle ne bouge jamais.
+        if (mkMenuCam != null && menuCamera != null && menuCamera.transform.parent != null)
             menuCamera.transform.SetParent(null, true);
-
-        if (mkMenuCam == null)
-            Debug.LogWarning("PoppyMainMenu: point 'MenuCameraPoint' introuvable ; position actuelle utilisée.", this);
-        if (mkShopCam == null)
-            Debug.LogWarning("PoppyMainMenu: point 'ShopPlayerCamera' introuvable ; cadrage boutique calculé automatiquement.", this);
-        if (mkMonsterCam == null && monsterNode == null)
-            Debug.LogWarning("PoppyMainMenu: point 'ShopMonsterCamera' introuvable ; cadrage monstre calculé automatiquement.", this);
-
+        // Sans point, la caméra garde son rig d'origine ; le verrouillage monde ci-dessous évite toute dérive.
         if (connectionManager == null) connectionManager = FindObjectOfType<ConnectionManafer>();
 
         if (connectionManager != null)
@@ -248,6 +252,7 @@ public class PoppyMainMenu : MonoBehaviour
             if (!wasConnectedToSession)
             {
                 wasConnectedToSession = true;
+                PoppyAudioManager.PlayLobbyMusic();
                 // Clear menu flags once on entry, then let PoppyLobbyUI own the lobby flag.
                 PoppyUIInputGate.Clear();
             }
@@ -265,6 +270,7 @@ public class PoppyMainMenu : MonoBehaviour
         if (wasConnectedToSession)
         {
             wasConnectedToSession = false;
+            PoppyAudioManager.PlayMenuMusic();
             if (menuCanvas != null) menuCanvas.gameObject.SetActive(true);
             if (environmentRoot != null) environmentRoot.gameObject.SetActive(true);
             if (characterPreview != null) characterPreview.gameObject.SetActive(true);
@@ -493,12 +499,6 @@ public class PoppyMainMenu : MonoBehaviour
         if (huggyPreview == null) return;
         huggyPreview.gameObject.SetActive(false);
         selectedMonsterIndex = PoppyMonsterShop.SelectedSkin;
-        if (monsterBoxes[1] != null)
-        {
-            huggyPreview.SetParent(monsterBoxes[1], true);
-            huggyPreview.localPosition = new Vector3(0f, 0.45f, 0.15f);
-            huggyPreview.localRotation = Quaternion.Euler(0f, 180f, 0f);
-        }
         PlaceMonsterAtMarker();
         PausePreviewAnimator(huggyPreview);
         DisablePreviewBehaviours(huggyPreview);
@@ -878,9 +878,6 @@ public class PoppyMainMenu : MonoBehaviour
     {
         if (huggyPreview == null || monsterBoxes[1] == null) return;
         huggyPreview.gameObject.SetActive(true);
-        huggyPreview.SetParent(monsterBoxes[1], true);
-        huggyPreview.localPosition = new Vector3(0f, 0.48f, 0.05f);
-        huggyPreview.localRotation = Quaternion.Euler(0f, 180f, 0f);
         PlaceMonsterAtMarker();
         ResumePreviewAnimator(huggyPreview);
         ApplyMonsterSkin();

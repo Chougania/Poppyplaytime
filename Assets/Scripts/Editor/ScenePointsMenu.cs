@@ -47,7 +47,7 @@ public static class ScenePointsMenu
 		Debug.Log("MonsterShopNode créé. Déplace le node (le monstre se tient dessus, face à l'axe bleu) et la ShopCameraAnchor (la caméra).");
 	}
 
-	[MenuItem("Poppy/Créer les points de scène (menu, boutique, générateurs)")]
+	[MenuItem("Poppy/Créer les points de scène (menu, boutique, joueurs, générateurs)")]
 	public static void CreatePoints()
 	{
 		Color menu = new Color(1f, 0.82f, 0.1f);
@@ -60,6 +60,8 @@ public static class ScenePointsMenu
 			new Point("SpawnHuggyMenu", "Huggy dans le menu principal", menu),
 			new Point("ShopPlayerSpawn", "Joueur dans la boutique", shop),
 			new Point("ShopPlayerCamera", "Caméra boutique joueur", shop),
+			new Point("Player spawn", "Spawn de tous les joueurs survivants", game),
+			new Point("Player Monster spawn", "Spawn du joueur monstre", new Color(1f, 0.25f, 0.25f)),
 			new Point("GeneratorSpawn1", "Générateur 1", game),
 			new Point("GeneratorSpawn2", "Générateur 2", game),
 			new Point("GeneratorSpawn3", "Générateur 3", game),
@@ -92,7 +94,7 @@ public static class ScenePointsMenu
 		}
 		Selection.activeGameObject = root;
 		EditorSceneManager.MarkSceneDirty(root.scene);
-		Debug.Log("Points de scène : " + created + " créé(s). Déplace/oriente-les (la flèche = direction avant). Supprime ceux dont tu n'as pas besoin.");
+		Debug.Log("Points de scène : " + created + " créé(s). Place notamment « Player spawn » et « Player Monster spawn » dans la zone de jeu, puis oriente-les (flèche bleue = avant).");
 	}
 }
 #endif

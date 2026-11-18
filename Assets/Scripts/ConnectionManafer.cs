@@ -321,7 +321,7 @@ public class ConnectionManafer : MonoBehaviour
 				_isJoiningClient = true;
 			}
 		}
-		catch (Exception ex) { Debug.LogError("[Netcode] Could not join selected room: " + ex.Message); }
+		catch (Exception ex) { Debug.LogError("[Netcode] Could not join selected room: " + ex); }
 	}
 
 	public async void JoinWithCode()
@@ -378,7 +378,7 @@ public class ConnectionManafer : MonoBehaviour
 		}
 		catch (Exception ex)
 		{
-			Debug.LogError("Join Error: " + ex.Message);
+			Debug.LogError("Join Error (full details): " + ex);
 		}
 	}
 
@@ -431,7 +431,7 @@ public class ConnectionManafer : MonoBehaviour
 		}
 		catch (Exception ex)
 		{
-			Debug.LogError("Join Random Match Failed: " + ex.Message);
+			Debug.LogError("Join Random Match Failed (full details): " + ex);
 		}
 	}
 

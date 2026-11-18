@@ -261,12 +261,26 @@ public class DbUnityMovment : NetworkBehaviour
 
 	public override void OnNetworkSpawn()
 	{
+		// Les composants peuvent arriver désactivés sur le prefab instancié chez un client.
+		// On réactive les NetworkBehaviours pour que leurs callbacks réseau et leur logique
+		// de synchronisation fonctionnent sur chaque instance. Le contrôleur physique, lui,
+		// reste réservé au propriétaire local.
+		EnsureNetworkComponentsEnabled();
+
 		netBoxed.OnValueChanged += OnBoxedChanged;
 		if (netBoxed.Value) OnBoxedChanged(false, true);
 		_skinColorIndex.OnValueChanged += OnSkinColorChanged;
-		ApplySkinColor(_skinColorIndex.Value);
-		if (IsOwner)
-			RequestSkinColorServerRpc(PoppyShop.SelectedColor);
+		try
+		{
+			ApplySkinColor(_skinColorIndex.Value);
+			if (IsOwner)
+				RequestSkinColorServerRpc(PoppyShop.SelectedColor);
+		}
+		catch (System.Exception ex)
+		{
+			// Une erreur de couleur ne doit pas empêcher le joueur (caméra, mouvement) de s'initialiser.
+			Debug.LogError("[Player Setup] Skin setup failed, player setup continues: " + ex.Message, this);
+		}
 		if (monsterModelContainer != null && monsterModelContainer.activeSelf)
 		{
 			_animator = monsterModelContainer.GetComponent<Animator>() ?? monsterModelContainer.GetComponentInChildren<Animator>();
@@ -275,14 +289,19 @@ public class DbUnityMovment : NetworkBehaviour
 		{
 			_animator = survivorModelContainer.GetComponent<Animator>() ?? survivorModelContainer.GetComponentInChildren<Animator>();
 		}
+		if (IsOwner && !IsServer)
+			RequestInitialPlacementServerRpc();
+
 		if (IsOwner)
 		{
+			Debug.Log("[Player Setup] Local player ready (client id " + OwnerClientId + ", host=" + IsServer + ").", this);
 			Cursor.lockState = CursorLockMode.Locked;
 			Cursor.visible = false;
 			_currentCameraOffset = cameraOffset;
 			_stamina = Mathf.Max(0.1f, maxStamina);
 			if (cameraTransform != null)
 			{
+				cameraTransform.gameObject.SetActive(true);
 				cameraTransform.localPosition = cameraOffset;
 				if (cameraTransform.TryGetComponent<Camera>(out var component))
 				{
@@ -341,6 +360,75 @@ public class DbUnityMovment : NetworkBehaviour
 	}
 
 
+	// Un client qui rejoint est placé au salon par le serveur une fois SON joueur réellement apparu
+	// (le message envoyé à la connexion pouvait arriver avant l'apparition et être perdu).
+	[ServerRpc]
+	private void RequestInitialPlacementServerRpc()
+	{
+		GameManager gm = FindObjectOfType<GameManager>();
+		if (gm != null)
+			gm.PlaceJoinedClient(OwnerClientId);
+	}
+
+	private float _nextOwnerHeal;
+
+	// « Prêt » passe par l'objet du joueur (dont il est propriétaire) : fiable pour un client.
+	[ServerRpc]
+	private void SetReadyServerRpc(bool ready)
+	{
+		GameManager gm = FindObjectOfType<GameManager>();
+		if (gm != null)
+			gm.ServerSetReady(OwnerClientId, ready);
+	}
+
+	public bool RequestReady(bool ready)
+	{
+		if (!IsOwner || !IsSpawned)
+			return false;
+		SetReadyServerRpc(ready);
+		return true;
+	}
+
+	// Auto-réparation côté propriétaire : contrôleur désactivé par erreur, composants réseau éteints.
+	private void HealOwnerSetup()
+	{
+		foreach (NetworkBehaviour behaviour in GetComponents<NetworkBehaviour>())
+		{
+			if (behaviour != null && !behaviour.enabled)
+				behaviour.enabled = true;
+		}
+		if (_controller == null)
+			_controller = GetComponent<CharacterController>();
+		bool frozen = _isLocalVictimFrozen || netBoxed.Value;
+		if (_controller != null && !_controller.enabled && !frozen)
+			_controller.enabled = true;
+
+		// Survivant visible et vivant : le Grabpack doit fonctionner (il pouvait rester coupé chez un client).
+		bool playable = !frozen && survivorModelContainer != null && survivorModelContainer.activeSelf &&
+			(monsterModelContainer == null || !monsterModelContainer.activeSelf);
+		if (playable && grabpackScript != null && !grabpackScript.enabled)
+			SetGrabpackStatus(true);
+	}
+
+	private void EnsureNetworkComponentsEnabled()
+	{
+		NetworkBehaviour[] networkBehaviours = GetComponents<NetworkBehaviour>();
+		foreach (NetworkBehaviour behaviour in networkBehaviours)
+		{
+			if (behaviour != null && !behaviour.enabled)
+			{
+				behaviour.enabled = true;
+				Debug.Log("[Player Setup] Network component re-enabled: " + behaviour.GetType().Name, this);
+			}
+		}
+
+		if (_controller == null)
+			_controller = GetComponent<CharacterController>();
+
+		if (_controller != null)
+			_controller.enabled = IsOwner;
+	}
+
 	public override void OnNetworkDespawn()
 	{
 		netBoxed.OnValueChanged -= OnBoxedChanged;
@@ -375,6 +463,12 @@ public class DbUnityMovment : NetworkBehaviour
 
 	private void Update()
 	{
+		if (IsOwner && Time.unscaledTime >= _nextOwnerHeal)
+		{
+			_nextOwnerHeal = Time.unscaledTime + 0.5f;
+			HealOwnerSetup();
+		}
+
 		if (IsOwner && netBoxed.Value)
 			HandleBoxedPull();
 

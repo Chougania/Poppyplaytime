@@ -14,8 +14,16 @@ public class GameManager : NetworkBehaviour
 	[Header("Spawn Points")]
 	public Transform lobbySpawnPoint;
 
+	[Tooltip("Point nommé exactement « Player spawn » : tous les survivants y apparaissent si renseigné.")]
+	public Transform playerSpawnPoint;
+
+	[Tooltip("Point nommé exactement « Player Monster spawn » : le joueur contrôlant le monstre y apparaît.")]
+	public Transform playerMonsterSpawnPoint;
+
+	[Tooltip("Anciens points de spawn des survivants (utilisés en secours si Player spawn est absent).") ]
 	public Transform[] survivorSpawnPoints;
 
+	[Tooltip("Ancien point de spawn du monstre (utilisé en secours si Player Monster spawn est absent).") ]
 	public Transform monsterSpawnPoint;
 
 	[Header("Optional AI Enemy")]
@@ -35,6 +43,19 @@ public class GameManager : NetworkBehaviour
 	[Header("Game Settings")]
 	public int gameDurationSeconds = 180;
 
+	[Tooltip("Durée d'une manche en minutes (remplace l'ancien réglage en secondes).")]
+	[Min(1)] public int roundDurationMinutes = 10;
+
+	private int RoundSeconds
+	{
+		get { return Mathf.Max(60, roundDurationMinutes * 60); }
+	}
+
+	public int RoundTimeLeft
+	{
+		get { return _netTimer.Value; }
+	}
+
 	private NetworkVariable<int> _netTimer = new NetworkVariable<int>(180, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 	private NetworkVariable<bool> _netGameStarted = new NetworkVariable<bool>(false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 	private NetworkList<ulong> _readyClients = new NetworkList<ulong>();
@@ -47,6 +68,8 @@ public class GameManager : NetworkBehaviour
 	private readonly NetworkVariable<int> _genTotal = new NetworkVariable<int>(0);
 	private readonly NetworkVariable<int> _genDone = new NetworkVariable<int>(0);
 	private readonly NetworkVariable<bool> _exitOpen = new NetworkVariable<bool>(false);
+	private readonly NetworkVariable<int> _genSolved = new NetworkVariable<int>(0);
+	private readonly NetworkVariable<int> _genCompletedMask = new NetworkVariable<int>(0);
 	private readonly NetworkVariable<float> _g0 = new NetworkVariable<float>(0f);
 	private readonly NetworkVariable<float> _g1 = new NetworkVariable<float>(0f);
 	private readonly NetworkVariable<float> _g2 = new NetworkVariable<float>(0f);
@@ -68,6 +91,10 @@ public class GameManager : NetworkBehaviour
 	public int GenDone { get { return _genDone.Value; } }
 	public bool ExitOpen { get { return _exitOpen.Value; } }
 	public Vector3 ExitPos { get { return _exitPos.Value; } }
+
+	// Minijeu de disjoncteur : les générateurs 2 et 4 restent à 50 % tant que la séquence n'est pas réussie.
+	public bool GenSolved(int i) { return (_genSolved.Value & (1 << i)) != 0; }
+	public static bool GeneratorNeedsSequence(int i) { return i % 2 == 1; }
 
 	public float GenProgress(int i)
 	{
@@ -116,6 +143,8 @@ public class GameManager : NetworkBehaviour
 		_exitPos.Value = exit;
 		_genDone.Value = 0;
 		_exitOpen.Value = false;
+		_genSolved.Value = 0;
+		_genCompletedMask.Value = 0;
 		_genTotal.Value = total;
 	}
 
@@ -124,6 +153,8 @@ public class GameManager : NetworkBehaviour
 		_genTotal.Value = 0;
 		_genDone.Value = 0;
 		_exitOpen.Value = false;
+		_genSolved.Value = 0;
+		_genCompletedMask.Value = 0;
 	}
 
 	[ServerRpc(RequireOwnership = false)]
@@ -149,6 +180,8 @@ public class GameManager : NetworkBehaviour
 			return;
 		}
 		progress = Mathf.Min(1f, progress + Mathf.Clamp(seconds, 0f, 0.7f) / 28f);
+		if (GeneratorNeedsSequence(index) && !GenSolved(index))
+			progress = Mathf.Min(progress, 0.5f);
 		SetProgress(index, progress);
 
 		// le bruit de la réparation attire le monstre (joueur ou IA)
@@ -167,14 +200,7 @@ public class GameManager : NetworkBehaviour
 			}
 		}
 		if (progress >= 1f)
-		{
-			_genDone.Value++;
-			if (_genDone.Value >= _genTotal.Value)
-			{
-				_exitOpen.Value = true;
-				SetRoleNotificationClientRpc("TOUS LES GÉNÉRATEURS SONT ACTIFS ! LA SORTIE EST OUVERTE !");
-			}
-		}
+			MarkGeneratorComplete(index);
 	}
 
 	[ClientRpc]
@@ -184,6 +210,79 @@ public class GameManager : NetworkBehaviour
 		{
 			ObjectiveWorld.Instance.AddPing(pos);
 		}
+	}
+
+	// ------------------------------------------------------------------ minijeux des générateurs
+	private void RaiseNoise(Vector3 position)
+	{
+		HuggyHunterAI ai = FindObjectOfType<HuggyHunterAI>();
+		if (ai != null)
+			ai.HearNoise(position);
+		if (_hasMonster)
+			NoisePingClientRpc(position, Only(_monsterId));
+	}
+
+	private void MarkGeneratorComplete(int index)
+	{
+		if (!IsServer || index < 0 || index >= _genTotal.Value)
+			return;
+		int bit = 1 << index;
+		if ((_genCompletedMask.Value & bit) != 0)
+			return;
+		_genCompletedMask.Value |= bit;
+		_genDone.Value = Mathf.Min(_genTotal.Value, _genDone.Value + 1);
+		if (_genDone.Value >= _genTotal.Value && !_exitOpen.Value)
+		{
+			_exitOpen.Value = true;
+			SetRoleNotificationClientRpc("TOUS LES GÉNÉRATEURS SONT ACTIFS ! LA SORTIE EST OUVERTE !");
+		}
+	}
+
+	/// <summary>kind 0 = test de timing (bonus / pénalité), kind 1 = séquence de disjoncteur.</summary>
+	[ServerRpc(RequireOwnership = false)]
+	public void GeneratorMinigameServerRpc(int index, int kind, bool success, ServerRpcParams rpcParams = default(ServerRpcParams))
+	{
+		ulong sender = rpcParams.Receive.SenderClientId;
+		if (!_gameStarted || !_survivorsIn.Contains(sender) || index < 0 || index >= _genTotal.Value || (kind != 0 && kind != 1))
+			return;
+		DbUnityMovment player = PlayerOf(sender);
+		if (player == null || player.IsBoxed)
+			return;
+		if (Vector3.Distance(player.transform.position, GenPos(index)) > 5f)
+			return;
+		float progress = GenProgress(index);
+		if (progress >= 1f)
+			return;
+
+		if (kind == 1)
+		{
+			if (success && progress >= 0.499f && GeneratorNeedsSequence(index))
+			{
+				_genSolved.Value = _genSolved.Value | (1 << index);
+			}
+			else if (!success)
+			{
+				SetProgress(index, Mathf.Min(progress, Mathf.Max(0.45f, progress - 0.05f)));
+				RaiseNoise(GenPos(index));
+			}
+			return;
+		}
+
+		if (success)
+		{
+			progress += 0.06f;
+		}
+		else
+		{
+			progress -= 0.08f;
+			RaiseNoise(GenPos(index));
+		}
+		progress = Mathf.Clamp01(progress);
+		if (GeneratorNeedsSequence(index) && !GenSolved(index))
+			progress = Mathf.Min(progress, 0.5f);
+		SetProgress(index, progress);
+		if (progress >= 1f)
+			MarkGeneratorComplete(index);
 	}
 
 	// ------------------------------------------------------------------ vies, coups et cartons
@@ -518,6 +617,18 @@ public class GameManager : NetworkBehaviour
 		EndGame(grantRewards: false);
 	}
 
+	/// <summary>Serveur : change l'état « prêt » d'un joueur (appelé par le joueur lui-même, propriétaire de son objet).</summary>
+	public void ServerSetReady(ulong clientId, bool ready)
+	{
+		if (!IsServer || NetworkManager.Singleton == null || !NetworkManager.Singleton.ConnectedClients.ContainsKey(clientId))
+			return;
+		bool currentlyReady = _readyClients.Contains(clientId);
+		if (ready && !currentlyReady)
+			_readyClients.Add(clientId);
+		else if (!ready && currentlyReady)
+			_readyClients.Remove(clientId);
+	}
+
 	public void SetLocalReady(bool ready)
 	{
 		if (IsSpawned)
@@ -539,6 +650,43 @@ public class GameManager : NetworkBehaviour
 			_readyClients.Add(sender);
 		else if (!ready && currentlyReady)
 			_readyClients.Remove(sender);
+	}
+
+	private void ResolveSceneSpawnPoints()
+	{
+		// Les noms sont volontairement exacts pour correspondre aux nodes de la scène.
+		if (playerSpawnPoint == null)
+		{
+			GameObject point = GameObject.Find("Player spawn");
+			if (point != null) playerSpawnPoint = point.transform;
+		}
+		if (playerMonsterSpawnPoint == null)
+		{
+			GameObject point = GameObject.Find("Player Monster spawn");
+			if (point != null) playerMonsterSpawnPoint = point.transform;
+		}
+		if (monsterSpawnPoint == null)
+			monsterSpawnPoint = playerMonsterSpawnPoint;
+		if (playerMonsterSpawnPoint == null)
+			playerMonsterSpawnPoint = monsterSpawnPoint;
+	}
+
+	private Vector3 GetPlayerSpawnPosition(int index)
+	{
+		if (playerSpawnPoint != null) return playerSpawnPoint.position;
+		if (survivorSpawnPoints != null && survivorSpawnPoints.Length > 0)
+		{
+			Transform point = survivorSpawnPoints[index % survivorSpawnPoints.Length];
+			if (point != null) return point.position;
+		}
+		return transform.position;
+	}
+
+	private Vector3 GetMonsterPlayerSpawnPosition()
+	{
+		if (playerMonsterSpawnPoint != null) return playerMonsterSpawnPoint.position;
+		if (monsterSpawnPoint != null) return monsterSpawnPoint.position;
+		return transform.position;
 	}
 
 	private void OnValidate()
@@ -566,6 +714,7 @@ public class GameManager : NetworkBehaviour
 
 	public override void OnNetworkSpawn()
 	{
+		ResolveSceneSpawnPoints();
 		_netTimer.OnValueChanged += UpdateTimerUI;
 		UpdateTimerUI(0, _netTimer.Value);
 
@@ -579,7 +728,7 @@ public class GameManager : NetworkBehaviour
 		if (!IsServer || NetworkManager.Singleton == null)
 			return;
 
-		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
+		_netTimer.Value = RoundSeconds;
 		NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
 		NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
 		_readyClients.Clear();
@@ -616,6 +765,15 @@ public class GameManager : NetworkBehaviour
 		// The server no longer starts a round automatically with Enter.
 		if (hostStartPromptUI != null && hostStartPromptUI.activeSelf)
 			hostStartPromptUI.SetActive(false);
+	}
+
+	/// <summary>Appelé par le joueur lui-même une fois apparu : placement au salon (pendant une manche : spectateur).</summary>
+	public void PlaceJoinedClient(ulong clientId)
+	{
+		if (!IsServer || lobbySpawnPoint == null)
+			return;
+		// Toujours survivant au salon : caméra, déplacement et Grabpack actifs (pas de mode spectateur à l'arrivée).
+		ExecuteTargetedTeleport(clientId, lobbySpawnPoint.position, isMonster: false, isSurvivor: true);
 	}
 
 	private void OnClientConnected(ulong clientId)
@@ -668,6 +826,7 @@ public class GameManager : NetworkBehaviour
 		int currentRoundId = _roundId;
 		_gameStarted = true;
 		_netGameStarted.Value = true;
+		StartRoundAudioClientRpc();
 		_eliminatedClients.Clear();
 		_survivorsIn.Clear();
 		_hasMonster = false;
@@ -679,11 +838,27 @@ public class GameManager : NetworkBehaviour
 		_freeLast.Clear();
 		ResetAllLives();
 		ResetRoundProgression();
-		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
+		_netTimer.Value = RoundSeconds;
 		SetRoleNotificationClientRpc("Assigning Roles...");
-		yield return new WaitForSecondsRealtime(3f);
+		yield return new WaitForSecondsRealtime(1f);
 		if (!IsServer || currentRoundId != _roundId || !_gameStarted)
 			yield break;
+
+		// Attendre que chaque client connecté ait réellement son PlayerObject côté serveur.
+		// Sans cela, une affectation trop précoce saute les joueurs dont le prefab arrive en retard.
+		float spawnWait = 0f;
+		while (spawnWait < 12f && !AllConnectedPlayersHaveSpawned())
+		{
+			if (!IsServer || currentRoundId != _roundId || !_gameStarted) yield break;
+			spawnWait += 0.1f;
+			yield return new WaitForSecondsRealtime(0.1f);
+		}
+		if (!AllConnectedPlayersHaveSpawned())
+		{
+			Debug.LogError("Round cancelled: at least one connected player has no spawned PlayerObject after 12 seconds.");
+			EndGame(grantRewards: false);
+			yield break;
+		}
 
 		AssignRolesAndSpawn();
 		if (!_gameStarted || currentRoundId != _roundId)
@@ -717,6 +892,29 @@ public class GameManager : NetworkBehaviour
 		}
 		if (currentRoundId == _roundId && _gameStarted)
 			EndGame();
+	}
+
+	[ClientRpc]
+	private void RoundEndAudioClientRpc()
+	{
+		PoppyAudioManager.PlayLobbyMusic();
+	}
+
+	[ClientRpc]
+	private void StartRoundAudioClientRpc()
+	{
+		PoppyAudioManager.PlayGameplayMusic();
+	}
+
+	private bool AllConnectedPlayersHaveSpawned()
+	{
+		if (NetworkManager.Singleton == null) return false;
+		foreach (NetworkClient client in NetworkManager.Singleton.ConnectedClientsList)
+		{
+			if (client == null || client.PlayerObject == null || !client.PlayerObject.IsSpawned)
+				return false;
+		}
+		return NetworkManager.Singleton.ConnectedClientsList.Count > 0;
 	}
 
 	private void AssignRolesAndSpawn()
@@ -755,9 +953,7 @@ public class GameManager : NetworkBehaviour
 				if (client.PlayerObject == null)
 					continue;
 
-				Vector3 spawn = survivorSpawnPoints != null && survivorSpawnPoints.Length > 0
-					? survivorSpawnPoints[survivorIndex % survivorSpawnPoints.Length].position
-					: transform.position;
+				Vector3 spawn = GetPlayerSpawnPosition(survivorIndex);
 				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: false, isSurvivor: true);
 				NotifySingleClientRole(client.ClientId, "HUGGY IS HUNTING YOU. REPAIR THE GENERATORS, THEN ESCAPE!");
 				_survivorsIn.Add(client.ClientId);
@@ -782,7 +978,7 @@ public class GameManager : NetworkBehaviour
 
 			if (i == monsterIndex)
 			{
-				Vector3 spawn = monsterSpawnPoint != null ? monsterSpawnPoint.position : transform.position;
+				Vector3 spawn = GetMonsterPlayerSpawnPosition();
 				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: true, isSurvivor: false);
 				NotifySingleClientRole(client.ClientId, "YOU ARE THE MONSTER! HUNT THE HIDERS!");
 				_monsterId = client.ClientId;
@@ -790,9 +986,7 @@ public class GameManager : NetworkBehaviour
 			}
 			else
 			{
-				Vector3 spawn = survivorSpawnPoints != null && survivorSpawnPoints.Length > 0
-					? survivorSpawnPoints[survivorSpawnIndex % survivorSpawnPoints.Length].position
-					: transform.position;
+				Vector3 spawn = GetPlayerSpawnPosition(survivorSpawnIndex);
 				ExecuteTargetedTeleport(client.ClientId, spawn, isMonster: false, isSurvivor: true);
 				NotifySingleClientRole(client.ClientId, "YOU ARE A HIDER! REPAIR THE GENERATORS, THEN ESCAPE!");
 				_survivorsIn.Add(client.ClientId);
@@ -819,6 +1013,7 @@ public class GameManager : NetworkBehaviour
 			value.PlayerObject != null)
 		{
 			ulong networkObjectId = value.PlayerObject.NetworkObjectId;
+			Debug.Log("[Spawn] Téléportation demandée : client=" + clientId + ", monster=" + isMonster + ", position=" + targetPosition);
 			TeleportClientTargetClientRpc(targetPosition, isMonster, isSurvivor, networkObjectId, clientId);
 		}
 	}
@@ -826,11 +1021,31 @@ public class GameManager : NetworkBehaviour
 	[ClientRpc]
 	private void TeleportClientTargetClientRpc(Vector3 targetPosition, bool isMonster, bool isSurvivor, ulong targetNetObjectId, ulong targetOwnerId)
 	{
-		if (NetworkManager.Singleton == null ||
-			!NetworkManager.Singleton.SpawnManager.SpawnedObjects.TryGetValue(targetNetObjectId, out var value) ||
-			value.OwnerClientId != targetOwnerId)
+		// Le RPC de téléportation peut arriver avant la réplication du PlayerObject chez un client.
+		// On attend sa disponibilité au lieu d'abandonner définitivement le déplacement.
+		StartCoroutine(ApplyTeleportWhenPlayerIsSpawned(targetPosition, isMonster, isSurvivor, targetNetObjectId, targetOwnerId));
+	}
+
+	private IEnumerator ApplyTeleportWhenPlayerIsSpawned(Vector3 targetPosition, bool isMonster, bool isSurvivor, ulong targetNetObjectId, ulong targetOwnerId)
+	{
+		NetworkObject value = null;
+		for (int attempt = 0; attempt < 60; attempt++)
 		{
-			return;
+			NetworkManager nm = NetworkManager.Singleton;
+			if (nm == null || !nm.IsListening || nm.SpawnManager == null) yield break;
+			if (nm.SpawnManager.SpawnedObjects.TryGetValue(targetNetObjectId, out value) &&
+				value != null && value.OwnerClientId == targetOwnerId) break;
+			value = null;
+			yield return new WaitForSecondsRealtime(0.1f);
+		}
+		if (value == null)
+		{
+			Debug.LogError("[Spawn] PlayerObject " + targetNetObjectId + " (client " + targetOwnerId + ") n'est pas apparu après 6 secondes.");
+			yield break;
+		}
+		if (NetworkManager.Singleton != null && targetOwnerId == NetworkManager.Singleton.LocalClientId && isMonster)
+		{
+			PoppyAudioManager.PlayMonsterMusic();
 		}
 		DbUnityMovment component = value.GetComponent<DbUnityMovment>();
 		CharacterController component2 = value.GetComponent<CharacterController>();
@@ -973,6 +1188,7 @@ public class GameManager : NetworkBehaviour
 		_lastWinnerText = _escaped > 0 ? "LES SURVIVANTS S'ÉCHAPPENT !  (" + _escaped + ")" : "LE MONSTRE A GAGNÉ...";
 		// Les points ne vont qu'aux joueurs encore en vie ou évadés : un joueur éliminé ne gagne rien.
 		GrantRoundRewards(wasStarted && grantRewards);
+		RoundEndAudioClientRpc();
 		_eliminatedClients.Clear();
 		_readyClients.Clear();
 		ResetRoundProgression();
@@ -981,7 +1197,7 @@ public class GameManager : NetworkBehaviour
 		if (spawnedAiMonster != null && spawnedAiMonster.IsSpawned)
 			spawnedAiMonster.Despawn(true);
 		spawnedAiMonster = null;
-		_netTimer.Value = Mathf.Max(1, gameDurationSeconds);
+		_netTimer.Value = RoundSeconds;
 		foreach (NetworkClient connectedClients in NetworkManager.Singleton.ConnectedClientsList)
 		{
 			if (connectedClients.PlayerObject != null && lobbySpawnPoint != null)

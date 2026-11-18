@@ -77,9 +77,11 @@ public class PlayerCameraSetup : NetworkBehaviour
 			gameObject.tag = "MainCamera";
 			Camera component = gameObject.GetComponent<Camera>();
 			if (component != null)
-			{
 				component.enabled = true;
-			}
+
+			AudioListener listener = gameObject.GetComponent<AudioListener>();
+			if (listener != null)
+				listener.enabled = true;
 		}
 	}
 
@@ -89,16 +91,28 @@ public class PlayerCameraSetup : NetworkBehaviour
 		{
 			firstPersonCamera.SetActive(value: false);
 			firstPersonCamera.tag = "Untagged";
+			Camera camera = firstPersonCamera.GetComponent<Camera>();
+			if (camera != null) camera.enabled = false;
+			AudioListener listener = firstPersonCamera.GetComponent<AudioListener>();
+			if (listener != null) listener.enabled = false;
 		}
 		if (thirdPersonRightCamera != null)
 		{
 			thirdPersonRightCamera.SetActive(value: false);
 			thirdPersonRightCamera.tag = "Untagged";
+			Camera camera = thirdPersonRightCamera.GetComponent<Camera>();
+			if (camera != null) camera.enabled = false;
+			AudioListener listener = thirdPersonRightCamera.GetComponent<AudioListener>();
+			if (listener != null) listener.enabled = false;
 		}
 		if (thirdPersonLeftCamera != null)
 		{
 			thirdPersonLeftCamera.SetActive(value: false);
 			thirdPersonLeftCamera.tag = "Untagged";
+			Camera camera = thirdPersonLeftCamera.GetComponent<Camera>();
+			if (camera != null) camera.enabled = false;
+			AudioListener listener = thirdPersonLeftCamera.GetComponent<AudioListener>();
+			if (listener != null) listener.enabled = false;
 		}
 	}
 }

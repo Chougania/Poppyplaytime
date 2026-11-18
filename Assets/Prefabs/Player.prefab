@@ -4765,6 +4765,8 @@ MonoBehaviour:
     m_NumAlphaKeys: 2
   ropeCornerVertices: 4
   ropeCapVertices: 4
+  shootRollLeft: 0
+  shootRollRight: 0
 --- !u!120 &120095919050787622
 LineRenderer:
   serializedVersion: 2
@@ -7208,6 +7210,8 @@ MonoBehaviour:
     m_NumAlphaKeys: 2
   ropeCornerVertices: 4
   ropeCapVertices: 4
+  shootRollLeft: 0
+  shootRollRight: 0
 --- !u!120 &120416982030819627
 LineRenderer:
   serializedVersion: 2
@@ -11750,19 +11754,19 @@ MonoBehaviour:
   deadModelContainer: {fileID: 1290791091168379}
   grabpackScript: {fileID: 114966426351977976}
   grabpackPhysicalModel: {fileID: 1132299442727904}
-  killDistance: 3
+  killDistance: 5
   attackRaycastOrigin: {fileID: 4363661268406493}
   attackCubeCollider: {fileID: 65687983308432875}
   survivorLayer:
     serializedVersion: 2
     m_Bits: 128
-  walkSpeed: 4
-  sprintSpeed: 6
-  crouchSpeed: 2
-  monsterSpeed: 7
+  walkSpeed: 6
+  sprintSpeed: 8
+  crouchSpeed: 4
+  monsterSpeed: 9
   jumpHeight: 1.8
   gravity: 9.81
-  maxStamina: 5
+  maxStamina: 15
   showStaminaHUD: 1
   staminaDrainPerSecond: 1
   staminaRecoveryPerSecond: 0.8
