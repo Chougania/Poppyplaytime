@@ -613,7 +613,7 @@ public class ObjectiveWorld : MonoBehaviour
 			return;
 		}
 		EnsureStyles();
-		DrawTimer();
+		// Le chronomètre est maintenant affiché par PoppyLobbyUI sur chaque instance.
 		OnGUIFreeing();
 		if (activeGame != null)
 			activeGame.Draw();
