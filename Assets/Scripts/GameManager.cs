@@ -426,8 +426,7 @@ public class GameManager : NetworkBehaviour
 		if (progress >= 1f)
 			FreeSurvivor(boxedClientId, boxed);
 		else
-			_freeProgress[boxedClientId] = progress;
-	}
+			_freeProgress[boxedClientId] = progress;	}
 
 	[ServerRpc(RequireOwnership = false)]
 	public void PullBoxedServerRpc(ulong boxedClientId, Vector3 pullerPosition, ServerRpcParams rpcParams = default(ServerRpcParams))
@@ -856,8 +855,7 @@ public class GameManager : NetworkBehaviour
 		if (!AllConnectedPlayersHaveSpawned())
 		{
 			Debug.LogError("Round cancelled: at least one connected player has no spawned PlayerObject after 12 seconds.");
-			EndGame(grantRewards: false);
-			yield break;
+			EndGame(grantRewards: false);			yield break;
 		}
 
 		AssignRolesAndSpawn();
@@ -997,105 +995,179 @@ public class GameManager : NetworkBehaviour
 
 	public void ExecuteTargetedTeleport(ulong clientId, Vector3 targetPosition, bool isMonster, bool isSurvivor)
 	{
-		if (IsServer)
+		if (!IsServer || NetworkManager.Singleton == null)
+			return;
+
+		if (!isSurvivor && !isMonster)
 		{
-			if (!isSurvivor && !isMonster)
-			{
-				_eliminatedClients.Add(clientId);
-				_survivorsIn.Remove(clientId);
-			}
-			else if (isSurvivor)
-				_eliminatedClients.Remove(clientId);
+			_eliminatedClients.Add(clientId);
+			_survivorsIn.Remove(clientId);
+		}
+		else if (isSurvivor)
+		{
+			_eliminatedClients.Remove(clientId);
 		}
 
-		if (IsServer && NetworkManager.Singleton != null &&
-			NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out var value) &&
-			value.PlayerObject != null)
+		NetworkClient client;
+		if (!NetworkManager.Singleton.ConnectedClients.TryGetValue(clientId, out client) ||
+			client.PlayerObject == null || !client.PlayerObject.IsSpawned)
 		{
-			ulong networkObjectId = value.PlayerObject.NetworkObjectId;
-			Debug.Log("[Spawn] Téléportation demandée : client=" + clientId + ", monster=" + isMonster + ", position=" + targetPosition);
-			TeleportClientTargetClientRpc(targetPosition, isMonster, isSurvivor, networkObjectId, clientId);
+			Debug.LogWarning("[Spawn] PlayerObject indisponible pour le client " + clientId + ".");
+			return;
 		}
+
+		NetworkObject playerObject = client.PlayerObject;
+		Debug.Log("[Spawn] Téléportation autoritaire : client=" + clientId +
+			", monster=" + isMonster + ", position=" + targetPosition);
+
+		// Le serveur déplace immédiatement son PlayerObject : la logique de jeu et les collisions
+		// utilisent ainsi la bonne position dès la frame du lancement.
+		ApplyPlayerTeleport(playerObject, targetPosition, isMonster, isSurvivor);
+
+		// Le propriétaire déplace également SON PlayerObject local. C'est indispensable si le
+		// NetworkTransform du prefab est configuré en autorité propriétaire.
+		TeleportOwnerClientRpc(targetPosition, isMonster, isSurvivor, clientId, Only(clientId));
+
+		// Tous les pairs reçoivent le rôle et changent les modèles visibles du joueur ciblé.
+		ApplyPlayerRoleClientRpc(isMonster, isSurvivor, playerObject.NetworkObjectId, clientId);
 	}
 
 	[ClientRpc]
-	private void TeleportClientTargetClientRpc(Vector3 targetPosition, bool isMonster, bool isSurvivor, ulong targetNetObjectId, ulong targetOwnerId)
+	private void TeleportOwnerClientRpc(Vector3 targetPosition, bool isMonster, bool isSurvivor,
+		ulong targetOwnerId, ClientRpcParams rpcParams = default(ClientRpcParams))
 	{
-		// Le RPC de téléportation peut arriver avant la réplication du PlayerObject chez un client.
-		// On attend sa disponibilité au lieu d'abandonner définitivement le déplacement.
-		StartCoroutine(ApplyTeleportWhenPlayerIsSpawned(targetPosition, isMonster, isSurvivor, targetNetObjectId, targetOwnerId));
+		NetworkManager nm = NetworkManager.Singleton;
+		if (nm == null || nm.LocalClientId != targetOwnerId)
+			return;
+
+		StartCoroutine(ApplyOwnerTeleportWhenReady(targetPosition, isMonster, isSurvivor, targetOwnerId));
 	}
 
-	private IEnumerator ApplyTeleportWhenPlayerIsSpawned(Vector3 targetPosition, bool isMonster, bool isSurvivor, ulong targetNetObjectId, ulong targetOwnerId)
+	private IEnumerator ApplyOwnerTeleportWhenReady(Vector3 targetPosition, bool isMonster,
+		bool isSurvivor, ulong targetOwnerId)
 	{
-		NetworkObject value = null;
-		for (int attempt = 0; attempt < 60; attempt++)
+		NetworkObject playerObject = null;
+		for (int attempt = 0; attempt < 100; attempt++)
 		{
 			NetworkManager nm = NetworkManager.Singleton;
-			if (nm == null || !nm.IsListening || nm.SpawnManager == null) yield break;
-			if (nm.SpawnManager.SpawnedObjects.TryGetValue(targetNetObjectId, out value) &&
-				value != null && value.OwnerClientId == targetOwnerId) break;
-			value = null;
+			if (nm == null || !nm.IsListening)
+				yield break;
+
+			NetworkClient localClient = nm.LocalClient;
+			if (localClient != null && localClient.ClientId == targetOwnerId &&
+				localClient.PlayerObject != null && localClient.PlayerObject.IsSpawned)
+			{
+				playerObject = localClient.PlayerObject;
+				break;
+			}
 			yield return new WaitForSecondsRealtime(0.1f);
 		}
-		if (value == null)
+
+		if (playerObject == null)
 		{
-			Debug.LogError("[Spawn] PlayerObject " + targetNetObjectId + " (client " + targetOwnerId + ") n'est pas apparu après 6 secondes.");
+			Debug.LogError("[Spawn] Le PlayerObject local du client " + targetOwnerId +
+				" n'est pas disponible après 10 secondes.");
 			yield break;
 		}
-		if (NetworkManager.Singleton != null && targetOwnerId == NetworkManager.Singleton.LocalClientId && isMonster)
+
+		ApplyPlayerTeleport(playerObject, targetPosition, isMonster, isSurvivor);
+	}
+
+	[ClientRpc]
+	private void ApplyPlayerRoleClientRpc(bool isMonster, bool isSurvivor,
+		ulong targetNetObjectId, ulong targetOwnerId)
+	{
+		StartCoroutine(ApplyPlayerRoleWhenSpawned(isMonster, isSurvivor, targetNetObjectId, targetOwnerId));
+	}
+
+	private IEnumerator ApplyPlayerRoleWhenSpawned(bool isMonster, bool isSurvivor,
+		ulong targetNetObjectId, ulong targetOwnerId)
+	{
+		NetworkObject playerObject = null;
+		for (int attempt = 0; attempt < 100; attempt++)
+		{
+			NetworkManager nm = NetworkManager.Singleton;
+			if (nm == null || !nm.IsListening || nm.SpawnManager == null)
+				yield break;
+
+			if (nm.SpawnManager.SpawnedObjects.TryGetValue(targetNetObjectId, out playerObject) &&
+				playerObject != null && playerObject.IsSpawned && playerObject.OwnerClientId == targetOwnerId)
+				break;
+
+			playerObject = null;
+			yield return new WaitForSecondsRealtime(0.1f);
+		}
+
+		if (playerObject == null)
+		{
+			Debug.LogWarning("[Spawn] Modèle du joueur " + targetOwnerId +
+				" non actualisé : son PlayerObject n'a pas été répliqué à temps.");
+			yield break;
+		}
+
+		ApplyPlayerRole(playerObject, isMonster, isSurvivor);
+	}
+
+	private void ApplyPlayerTeleport(NetworkObject playerObject, Vector3 targetPosition,
+		bool isMonster, bool isSurvivor)
+	{
+		if (playerObject == null)
+			return;
+
+		CharacterController controller = playerObject.GetComponent<CharacterController>();
+		Rigidbody body = playerObject.GetComponent<Rigidbody>();
+		bool controllerWasEnabled = controller != null && controller.enabled;
+		bool wasKinematic = body != null && body.isKinematic;
+
+		if (controller != null)
+			controller.enabled = false;
+		if (body != null)
+		{
+			body.isKinematic = true;
+			body.velocity = Vector3.zero;
+			body.angularVelocity = Vector3.zero;
+		}
+
+		playerObject.transform.position = targetPosition;
+		if (body != null)
+			body.position = targetPosition;
+
+		ApplyPlayerRole(playerObject, isMonster, isSurvivor);
+
+		if (body != null)
+		{
+			body.isKinematic = wasKinematic;
+			body.velocity = Vector3.zero;
+			body.angularVelocity = Vector3.zero;
+		}
+		if (controller != null && (playerObject.IsOwner || IsServer))
+			controller.enabled = controllerWasEnabled || playerObject.IsOwner;
+	}
+
+	private void ApplyPlayerRole(NetworkObject playerObject, bool isMonster, bool isSurvivor)
+	{
+		if (playerObject == null)
+			return;
+
+		DbUnityMovment movement = playerObject.GetComponent<DbUnityMovment>();
+		if (movement == null)
+			return;
+
+		if (movement.survivorModelContainer != null)
+			movement.survivorModelContainer.SetActive(isSurvivor);
+		if (movement.monsterModelContainer != null)
+			movement.monsterModelContainer.SetActive(isMonster);
+		if (movement.deadModelContainer != null)
+			movement.deadModelContainer.SetActive(!isSurvivor && !isMonster);
+
+		movement.RefreshSkinColor();
+		movement.SetEliminatedState(!isSurvivor && !isMonster, isSurvivor);
+		if (isMonster && NetworkManager.Singleton != null &&
+			playerObject.OwnerClientId == NetworkManager.Singleton.LocalClientId)
 		{
 			PoppyAudioManager.PlayMonsterMusic();
 		}
-		DbUnityMovment component = value.GetComponent<DbUnityMovment>();
-		CharacterController component2 = value.GetComponent<CharacterController>();
-		Rigidbody component3 = value.GetComponent<Rigidbody>();
-		if (component2 != null)
-		{
-			component2.enabled = false;
-		}
-		bool isKinematic = false;
-		if (component3 != null)
-		{
-			isKinematic = component3.isKinematic;
-			component3.isKinematic = true;
-			component3.velocity = Vector3.zero;
-			component3.angularVelocity = Vector3.zero;
-		}
-		value.transform.position = targetPosition;
-		if (component3 != null)
-		{
-			component3.position = targetPosition;
-		}
-		if (component != null)
-		{
-			if (component.survivorModelContainer != null)
-			{
-				component.survivorModelContainer.SetActive(isSurvivor);
-			}
- 			if (component.monsterModelContainer != null)
-			{
-				component.monsterModelContainer.SetActive(isMonster);
-			}
-			component.RefreshSkinColor();
-			if (component.deadModelContainer != null)
-			{
-				component.deadModelContainer.SetActive(value: false);
-			}
-			component.SetEliminatedState(!isSurvivor && !isMonster, isSurvivor);
-		}
-		if (component3 != null)
-		{
-			component3.isKinematic = isKinematic;
-			component3.velocity = Vector3.zero;
-			component3.angularVelocity = Vector3.zero;
-		}
-		if (value.IsOwner && component2 != null)
-		{
-			component2.enabled = true;
-		}
 	}
-
 	private void NotifySingleClientRole(ulong clientId, string message)
 	{
 		ClientRpcParams rpcParams = new ClientRpcParams
@@ -1207,4 +1279,3 @@ public class GameManager : NetworkBehaviour
 		}
 	}
 }
-
