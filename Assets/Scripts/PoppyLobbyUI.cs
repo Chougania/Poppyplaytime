@@ -211,8 +211,27 @@ public class PoppyLobbyUI : MonoBehaviour
 
     private void OnGUI()
     {
+        // Le chronomètre est dessiné localement sur chaque instance (hôte ET clients).
+        // Sa valeur provient de la NetworkVariable synchronisée par le serveur.
+        if (wasInSession && wasInMatch && gameManager != null)
+        {
+            int left = Mathf.Max(0, gameManager.RoundTimeLeft);
+            bool urgent = left <= 60;
+            GUIStyle timerStyle = new GUIStyle(GUI.skin.label);
+            timerStyle.fontSize = Mathf.Clamp(Screen.height / 24, 26, 42);
+            timerStyle.fontStyle = FontStyle.Bold;
+            timerStyle.alignment = TextAnchor.UpperCenter;
+            float pulse = urgent ? 0.65f + 0.35f * Mathf.Abs(Mathf.Sin(Time.unscaledTime * 4f)) : 1f;
+            timerStyle.normal.textColor = urgent
+                ? new Color(1f, 0.25f * pulse, 0.2f * pulse)
+                : Color.white;
+            GUI.Label(new Rect(0f, 12f, Screen.width, 54f),
+                (left / 60).ToString("00") + ":" + (left % 60).ToString("00"), timerStyle);
+        }
+
         if (!wasInSession || wasInMatch || !userHidden)
             return;
+
         GUIStyle style = new GUIStyle(GUI.skin.label);
         style.fontSize = 18;
         style.fontStyle = FontStyle.Bold;
